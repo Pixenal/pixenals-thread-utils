@@ -7,6 +7,7 @@
 pthread_t threads[MAX_THREADS];
 int32_t threadAmount = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
 int32_t run = 0;
 void *jobStack[MAX_THREADS];
 void *argStack[MAX_THREADS];
@@ -32,24 +33,29 @@ FunctionPtr getJob(void **argPtr) {
 
 void *threadLoop(void *argPtr) {
 	int32_t threadId = *(int32_t *)argPtr;
-	struct timespec remaining, request = {0, 10000};
+	struct timespec remaining, request = {0, 1000};
 	FunctionPtr job;
 	void *jobArgPtr = NULL;
 	while(1) {
 		if (!run) {
 			break;
 		}
+		pthread_mutex_lock(&jobMutex);
 		if ((job = getJob(&jobArgPtr))) {
+			pthread_mutex_unlock(&jobMutex);
 			job(jobArgPtr);
 		}
+		pthread_mutex_unlock(&jobMutex);
 		nanosleep(&request, &remaining);
 	}
 	return NULL;
 }
 
 int32_t pushJobs(int32_t jobAmount, FunctionPtr job, void **jobArgs) {
+	pthread_mutex_lock(&jobMutex);
 	int32_t nextTop = jobTop + jobAmount;
 	if (nextTop > MAX_THREADS) {
+		pthread_mutex_unlock(&jobMutex);
 		return 1;
 	}
 	for (int32_t i = 0; i < jobAmount; ++i) {
@@ -57,6 +63,7 @@ int32_t pushJobs(int32_t jobAmount, FunctionPtr job, void **jobArgs) {
 		jobStack[jobTop] = job;
 		jobTop++;
 	}
+	pthread_mutex_unlock(&jobMutex);
 	return 0;
 }
 
