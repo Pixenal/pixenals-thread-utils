@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-#define MAX_THREADS 23
+#define MAX_THREADS 1
 typedef void(*FunctionPtr)(void *);
 
 void mutexLock();
