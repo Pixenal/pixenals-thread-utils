@@ -6,100 +6,142 @@
 #include <stdio.h>
 #include "Types.h"
 #include <stdlib.h>
+#include <Context.h>
 
-pthread_t threads[MAX_THREADS];
-int32_t threadAmount = 0;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t jobMutex = PTHREAD_MUTEX_INITIALIZER;
-int32_t run = 0;
-void *jobStack[MAX_THREADS];
-void *argStack[MAX_THREADS];
-int32_t jobTop = 0;
+typedef struct {
+	pthread_t threads[MAX_THREADS];
+	int32_t threadAmount;
+	pthread_mutex_t jobMutex;
+	int32_t run;
+	void *jobStack[MAX_THREADS];
+	void *argStack[MAX_THREADS];
+	int32_t jobStackSize;
+	RuvmAllocator allocator;
+} ThreadPool;
 
-void mutexLock() {
-	pthread_mutex_lock(&mutex);
+void ruvmMutexGet(void *pThreadPool, void **pMutex) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	*pMutex = pState->allocator.pMalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(*pMutex, NULL);
 }
 
-void mutexUnlock() {
-	pthread_mutex_unlock(&mutex);
+void ruvmMutexLock(void *pThreadPool, void *pMutex) {
+	pthread_mutex_lock(pMutex);
 }
 
-FunctionPtr getJob(void **argPtr) {
-	if (jobTop <= 0) {
-		*argPtr = NULL;
-		return NULL;
+void ruvmMutexUnlock(void *pThreadPool, void *pMutex) {
+	pthread_mutex_unlock(pMutex);
+}
+
+void ruvmMutexDestroy(void *pThreadPool, void *pMutex) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	pthread_mutex_destroy(pMutex);
+	pState->allocator.pFree(pMutex);
+}
+
+void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	pthread_mutex_lock(&pState->jobMutex);
+	if (pState->jobStackSize > 0) {
+		pState->jobStackSize--;
+		*pJob = pState->jobStack[pState->jobStackSize];
+		*pArgs = pState->argStack[pState->jobStackSize];
 	}
-	jobTop--;
-	*argPtr = argStack[jobTop];
-	return jobStack[jobTop];
-}
-
-void executeJobIfPresent() {
-	FunctionPtr job;
-	void *jobArgPtr = NULL;
-	pthread_mutex_lock(&jobMutex);
-	if ((job = getJob(&jobArgPtr))) {
-		pthread_mutex_unlock(&jobMutex);
-		job(jobArgPtr);
+	else {
+		*pJob = *pArgs = NULL;
 	}
-	pthread_mutex_unlock(&jobMutex);
+	pthread_mutex_unlock(&pState->jobMutex);
+	return;
 }
 
-void *threadLoop(void *argPtr) {
-	int32_t threadId = *(int32_t *)argPtr;
+static void *threadLoop(void *pArgs) {
+	ThreadPool *pState = (ThreadPool *)pArgs;
 	struct timespec remaining, request = {0, 25};
 	while(1) {
-		if (!run) {
+		if (!pState->run) {
 			break;
 		}
-		executeJobIfPresent();
-		nanosleep(&request, &remaining);
+		void (*pJob)(void *) = NULL;
+		void *pJobArgs = NULL;
+		ruvmJobStackGetJob(pState, &pJob, &pJobArgs);
+		if (pJob) {
+			pJob(pJobArgs);
+		}
+		else {
+			nanosleep(&request, &remaining);
+		}
 	}
 	return NULL;
 }
 
-int32_t pushJobs(int32_t jobAmount, FunctionPtr job, void **jobArgs) {
-	pthread_mutex_lock(&jobMutex);
-	int32_t nextTop = jobTop + jobAmount;
+int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
+                             void (*pJob)(void *), void **pJobArgs) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	pthread_mutex_lock(&pState->jobMutex);
+	int32_t nextTop = pState->jobStackSize + jobAmount;
 	if (nextTop > MAX_THREADS) {
-		pthread_mutex_unlock(&jobMutex);
+		pthread_mutex_unlock(&pState->jobMutex);
 		return 1;
 	}
 	for (int32_t i = 0; i < jobAmount; ++i) {
-		argStack[jobTop] = jobArgs[i];
-		jobStack[jobTop] = job;
-		jobTop++;
+		pState->argStack[pState->jobStackSize] = pJobArgs[i];
+		pState->jobStack[pState->jobStackSize] = pJob;
+		pState->jobStackSize++;
 	}
-	int32_t prioMin, prioMax;
-	prioMin = sched_get_priority_min(SCHED_RR);
-	prioMax = sched_get_priority_max(SCHED_RR);
-	pthread_mutex_unlock(&jobMutex);
+	pthread_mutex_unlock(&pState->jobMutex);
 	return 0;
 }
 
-void createThreadPool() {
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	int32_t policy;
-	run = 1;
-	threadAmount = get_nprocs();
-	if (threadAmount > MAX_THREADS) {
-		threadAmount = MAX_THREADS;
+void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
+                        RuvmAllocator *pAllocator) {
+	ThreadPool *pState = pAllocator->pCalloc(1, sizeof(ThreadPool));
+	*pThreadPool = pState;
+	pState->allocator = *pAllocator;
+	pthread_mutex_init(&pState->jobMutex, NULL);
+	pState->run = 1;
+	pState->threadAmount = get_nprocs();
+	if (pState->threadAmount > MAX_THREADS) {
+		pState->threadAmount = MAX_THREADS;
 	}
-	if (threadAmount <= 1) {
+	*pThreadCount = pState->threadAmount;
+	if (pState->threadAmount <= 1) {
 		return;
 	}
-	for (int32_t i = 0; i < threadAmount; ++i) {
-		pthread_create(&threads[i], &attr, threadLoop, &i);
+	for (int32_t i = 0; i < pState->threadAmount; ++i) {
+		pthread_create(&pState->threads[i], NULL, threadLoop, pState);
 	}
 }
 
-void destroyThreadPool() {
-	if (threadAmount <= 1) {
+void ruvmThreadPoolDestroy(void *pThreadPool) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	pthread_mutex_destroy(&pState->jobMutex);
+	if (pState->threadAmount > 1) {
+		pState->run = 0;
+		for (int32_t i = 0; i < pState->threadAmount; ++i) {
+			pthread_join(pState->threads[i], NULL);
+		}
+	}
+	pState->allocator.pFree(pState);
+}
+
+void ruvmThreadPoolSetCustom(RuvmContext context, RuvmThreadPool *pThreadPool) {
+	if (!pThreadPool->pInit || !pThreadPool->pDestroy || !pThreadPool->pMutexGet ||
+	    !pThreadPool->pMutexLock || !pThreadPool->pMutexUnlock || !pThreadPool->pMutexDestroy ||
+		!pThreadPool->pJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
+		printf("Failed to set custom thread pool. One or more functions were NULL");
 		return;
 	}
-	run = 0;
-	for (int32_t i = 0; i < threadAmount; ++i) {
-		pthread_join(threads[i], NULL);
-	}
+	context->threadPool.pDestroy(context);
+	context->threadPool = *pThreadPool;
+}
+
+void ruvmThreadPoolSetDefault(RuvmContext context) {
+	context->threadPool.pInit = ruvmThreadPoolInit;
+	context->threadPool.pDestroy = ruvmThreadPoolDestroy;
+	context->threadPool.pMutexGet = ruvmMutexGet;
+	context->threadPool.pMutexLock = ruvmMutexLock;
+	context->threadPool.pMutexUnlock = ruvmMutexUnlock;
+	context->threadPool.pMutexDestroy = ruvmMutexDestroy;
+	context->threadPool.pJobStackGetJob = ruvmJobStackGetJob;
+	context->threadPool.pJobStackPushJobs = ruvmJobStackPushJobs;
 }
