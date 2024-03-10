@@ -1,6 +1,4 @@
-#include <pthread.h>
-#include <unistd.h>
-#include <sys/sysinfo.h>
+#include <windows.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,9 +8,10 @@
 #include <Context.h>
 
 typedef struct {
-	pthread_t threads[MAX_THREADS];
+	HANDLE threads[MAX_THREADS];
+	DWORD threadIds[MAX_THREADS];
 	int32_t threadAmount;
-	pthread_mutex_t jobMutex;
+	HANDLE jobMutex;
 	int32_t run;
 	void *jobStack[MAX_THREADS];
 	void *argStack[MAX_THREADS];
@@ -21,28 +20,27 @@ typedef struct {
 } ThreadPool;
 
 void ruvmMutexGet(void *pThreadPool, void **pMutex) {
-	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	*pMutex = pState->allocator.pMalloc(sizeof(pthread_mutex_t));
-	pthread_mutex_init(*pMutex, NULL);
+	*pMutex = CreateMutex(NULL, 0, NULL);
 }
 
 void ruvmMutexLock(void *pThreadPool, void *pMutex) {
-	pthread_mutex_lock(pMutex);
+	HANDLE mutex = (HANDLE)pMutex;
+	WaitForSingleObject(mutex, INFINITE);
 }
 
 void ruvmMutexUnlock(void *pThreadPool, void *pMutex) {
-	pthread_mutex_unlock(pMutex);
+	HANDLE mutex = (HANDLE)pMutex;
+	ReleaseMutex(mutex);
 }
 
 void ruvmMutexDestroy(void *pThreadPool, void *pMutex) {
-	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	pthread_mutex_destroy(pMutex);
-	pState->allocator.pFree(pMutex);
+	HANDLE mutex = (HANDLE)pMutex;
+	CloseHandle(mutex);
 }
 
 void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	pthread_mutex_lock(&pState->jobMutex);
+	WaitForSingleObject(&pState->jobMutex, INFINITE);
 	if (pState->jobStackSize > 0) {
 		pState->jobStackSize--;
 		*pJob = pState->jobStack[pState->jobStackSize];
@@ -51,13 +49,12 @@ void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) 
 	else {
 		*pJob = *pArgs = NULL;
 	}
-	pthread_mutex_unlock(&pState->jobMutex);
+	ReleaseMutex(&pState->jobMutex);
 	return;
 }
 
-static void *threadLoop(void *pArgs) {
+static unsigned long threadLoop(void *pArgs) {
 	ThreadPool *pState = (ThreadPool *)pArgs;
-	struct timespec remaining, request = {0, 25};
 	while(1) {
 		if (!pState->run) {
 			break;
@@ -69,19 +66,19 @@ static void *threadLoop(void *pArgs) {
 			pJob(pJobArgs);
 		}
 		else {
-			nanosleep(&request, &remaining);
+			Sleep(25);
 		}
 	}
-	return NULL;
+	return 0;
 }
 
 int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
                              void (*pJob)(void *), void **pJobArgs) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	pthread_mutex_lock(&pState->jobMutex);
+	WaitForSingleObject(&pState->jobMutex, INFINITE);
 	int32_t nextTop = pState->jobStackSize + jobAmount;
 	if (nextTop > MAX_THREADS) {
-		pthread_mutex_unlock(&pState->jobMutex);
+		ReleaseMutex(&pState->jobMutex);
 		return 1;
 	}
 	for (int32_t i = 0; i < jobAmount; ++i) {
@@ -89,7 +86,7 @@ int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
 		pState->jobStack[pState->jobStackSize] = pJob;
 		pState->jobStackSize++;
 	}
-	pthread_mutex_unlock(&pState->jobMutex);
+	ReleaseMutex(&pState->jobMutex);
 	return 0;
 }
 
@@ -98,9 +95,11 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 	ThreadPool *pState = pAllocator->pCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
 	pState->allocator = *pAllocator;
-	pthread_mutex_init(&pState->jobMutex, NULL);
+	pState->jobMutex = CreateMutex(NULL, 0, NULL);
 	pState->run = 1;
-	pState->threadAmount = get_nprocs();
+	SYSTEM_INFO systemInfo;
+	GetSystemInfo(&systemInfo);
+	pState->threadAmount = systemInfo.dwNumberOfProcessors;
 	if (pState->threadAmount > MAX_THREADS) {
 		pState->threadAmount = MAX_THREADS;
 	}
@@ -109,18 +108,17 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 		return;
 	}
 	for (int32_t i = 0; i < pState->threadAmount; ++i) {
-		pthread_create(&pState->threads[i], NULL, threadLoop, pState);
+		pState->threads[i] = CreateThread(NULL, 0, &threadLoop, pState, 0,
+				                  pState->threadIds + i);
 	}
 }
 
 void ruvmThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	pthread_mutex_destroy(&pState->jobMutex);
+	CloseHandle(&pState->jobMutex);
 	if (pState->threadAmount > 1) {
 		pState->run = 0;
-		for (int32_t i = 0; i < pState->threadAmount; ++i) {
-			pthread_join(pState->threads[i], NULL);
-		}
+		WaitForMultipleObjects(pState->threadAmount, pState->threads, 1, INFINITE);
 	}
 	pState->allocator.pFree(pState);
 }
