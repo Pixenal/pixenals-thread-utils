@@ -6,7 +6,6 @@
 #include <stdlib.h>
 
 #include <ThreadPool.h>
-#include <Types.h>
 #include <Context.h>
 
 typedef struct {
