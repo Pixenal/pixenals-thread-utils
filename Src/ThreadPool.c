@@ -16,12 +16,12 @@ typedef struct {
 	void *jobStack[MAX_THREADS];
 	void *argStack[MAX_THREADS];
 	int32_t jobStackSize;
-	RuvmAllocator allocator;
+	RuvmAlloc alloc;
 } ThreadPool;
 
 void ruvmMutexGet(void *pThreadPool, void **pMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	*pMutex = pState->allocator.pMalloc(sizeof(pthread_mutex_t));
+	*pMutex = pState->alloc.pMalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(*pMutex, NULL);
 }
 
@@ -36,7 +36,7 @@ void ruvmMutexUnlock(void *pThreadPool, void *pMutex) {
 void ruvmMutexDestroy(void *pThreadPool, void *pMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	pthread_mutex_destroy(pMutex);
-	pState->allocator.pFree(pMutex);
+	pState->alloc.pFree(pMutex);
 }
 
 void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) {
@@ -93,10 +93,10 @@ int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
 }
 
 void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
-                        RuvmAllocator *pAllocator) {
-	ThreadPool *pState = pAllocator->pCalloc(1, sizeof(ThreadPool));
+                        RuvmAlloc *pAlloc) {
+	ThreadPool *pState = pAlloc->pCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
-	pState->allocator = *pAllocator;
+	pState->alloc = *pAlloc;
 	pthread_mutex_init(&pState->jobMutex, NULL);
 	pState->run = 1;
 	pState->threadAmount = get_nprocs();
@@ -121,7 +121,7 @@ void ruvmThreadPoolDestroy(void *pThreadPool) {
 			pthread_join(pState->threads[i], NULL);
 		}
 	}
-	pState->allocator.pFree(pState);
+	pState->alloc.pFree(pState);
 }
 
 void ruvmThreadPoolSetCustom(RuvmContext context, RuvmThreadPool *pThreadPool) {

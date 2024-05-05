@@ -4,7 +4,7 @@
 
 #define MAX_THREADS 1
 
-void ruvmInitThreadPool(void **pThreadPool, int32_t *ThreadCount, RuvmAllocator *pAlloc);
+void ruvmInitThreadPool(void **pThreadPool, int32_t *ThreadCount, RuvmAlloc *pAlloc);
 void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **jobArgs);
 int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void (*job)(void *), void **pJobArgs);
 void ruvmMutexGet(void *pThreadPool, void **pMutex);
