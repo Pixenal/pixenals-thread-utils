@@ -4,7 +4,6 @@
 #include <stdlib.h>
 
 #include <ThreadPool.h>
-#include <Types.h>
 #include <Context.h>
 
 typedef struct {
@@ -16,7 +15,7 @@ typedef struct {
 	void *jobStack[MAX_THREADS];
 	void *argStack[MAX_THREADS];
 	int32_t jobStackSize;
-	RuvmAllocator allocator;
+	RuvmAlloc allocator;
 } ThreadPool;
 
 void ruvmMutexGet(void *pThreadPool, void **pMutex) {
@@ -91,7 +90,7 @@ int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
 }
 
 void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
-                        RuvmAllocator *pAllocator) {
+                        RuvmAlloc *pAllocator) {
 	ThreadPool *pState = pAllocator->pCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
 	pState->allocator = *pAllocator;
