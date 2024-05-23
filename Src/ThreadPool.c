@@ -1,12 +1,18 @@
+#ifdef MACOS
+	#include <sys/sysctl.h>
+#else
+	#include <sys/sysinfo.h>
+#endif
+
 #include <pthread.h>
 #include <unistd.h>
-#include <sys/sysinfo.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <ThreadPool.h>
 #include <Context.h>
+#include <Error.h>
 
 typedef struct {
 	pthread_t threads[MAX_THREADS];
@@ -99,7 +105,17 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 	pState->alloc = *pAlloc;
 	pthread_mutex_init(&pState->jobMutex, NULL);
 	pState->run = 1;
+#ifdef MACOS
+	uint64_t count = 0;
+	size_t size = sizeof(uint64_t);
+	int32_t result = sysctlbyname("hw.physicalcpu", &count, &size, NULL, 0);
+	if (result < 0) {
+		RUVM_ASSERT("Unable to get core count\n", 0);
+	}
+	pState->threadAmount = count;
+#else
 	pState->threadAmount = get_nprocs();
+#endif
 	if (pState->threadAmount > MAX_THREADS) {
 		pState->threadAmount = MAX_THREADS;
 	}
