@@ -1,4 +1,4 @@
-#ifdef MACOS
+#ifdef __APPLE_CC__
 	#include <sys/sysctl.h>
 #else
 	#include <sys/sysinfo.h>
@@ -105,7 +105,7 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 	pState->alloc = *pAlloc;
 	pthread_mutex_init(&pState->jobMutex, NULL);
 	pState->run = 1;
-#ifdef MACOS
+#ifdef __APPLE_CC__
 	uint64_t count = 0;
 	size_t size = sizeof(uint64_t);
 	int32_t result = sysctlbyname("hw.physicalcpu", &count, &size, NULL, 0);
