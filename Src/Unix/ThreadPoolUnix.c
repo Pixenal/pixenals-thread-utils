@@ -9,6 +9,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include <ThreadPool.h>
 #include <Context.h>
@@ -60,11 +61,18 @@ void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) 
 	return;
 }
 
+static bool checkRunFlag(ThreadPool *pState) {
+	pthread_mutex_lock(&pState->jobMutex);
+	bool run = pState->run;
+	pthread_mutex_unlock(&pState->jobMutex);
+	return run;
+}
+
 static void *threadLoop(void *pArgs) {
 	ThreadPool *pState = (ThreadPool *)pArgs;
 	struct timespec remaining, request = {0, 25};
 	while(1) {
-		if (!pState->run) {
+		if (!checkRunFlag(pState)) {
 			break;
 		}
 		void (*pJob)(void *) = NULL;
@@ -130,13 +138,15 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 
 void ruvmThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	pthread_mutex_destroy(&pState->jobMutex);
 	if (pState->threadAmount > 1) {
+		pthread_mutex_lock(&pState->jobMutex);
 		pState->run = 0;
+		pthread_mutex_unlock(&pState->jobMutex);
 		for (int32_t i = 0; i < pState->threadAmount; ++i) {
 			pthread_join(pState->threads[i], NULL);
 		}
 	}
+	pthread_mutex_destroy(&pState->jobMutex);
 	pState->alloc.pFree(pState);
 }
 

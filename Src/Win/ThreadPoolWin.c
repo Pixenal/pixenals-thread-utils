@@ -52,10 +52,17 @@ void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) 
 	return;
 }
 
+static bool checkRunFlag(ThreadPool *pState) {
+	WaitForSingleObject(&pState->jobMutex, INFINITE);
+	bool run = pState->run;
+	ReleaseMutex(&pState->jobMutex);
+	return run;
+}
+
 static unsigned long threadLoop(void *pArgs) {
 	ThreadPool *pState = (ThreadPool *)pArgs;
 	while(1) {
-		if (!pState->run) {
+		if (!checkRunFlag(pState)) {
 			break;
 		}
 		void (*pJob)(void *) = NULL;
@@ -114,11 +121,13 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 
 void ruvmThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	CloseHandle(&pState->jobMutex);
 	if (pState->threadAmount > 1) {
+		WaitForSingleObject(&pState->jobMutex, INFINITE);
 		pState->run = 0;
+		ReleaseMutex(&pState->jobMutex);
 		WaitForMultipleObjects(pState->threadAmount, pState->threads, 1, INFINITE);
 	}
+	CloseHandle(&pState->jobMutex);
 	pState->allocator.pFree(pState);
 }
 
