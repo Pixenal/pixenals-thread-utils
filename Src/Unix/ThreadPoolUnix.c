@@ -140,15 +140,16 @@ void ruvmThreadPoolDestroy(void *pThreadPool) {
 	pState->alloc.pFree(pState);
 }
 
-void ruvmThreadPoolSetCustom(RuvmContext context, RuvmThreadPool *pThreadPool) {
+RuvmResult ruvmThreadPoolSetCustom(RuvmContext context, RuvmThreadPool *pThreadPool) {
 	if (!pThreadPool->pInit || !pThreadPool->pDestroy || !pThreadPool->pMutexGet ||
 	    !pThreadPool->pMutexLock || !pThreadPool->pMutexUnlock || !pThreadPool->pMutexDestroy ||
 		!pThreadPool->pJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
 		printf("Failed to set custom thread pool. One or more functions were NULL");
-		return;
+		return RUVM_ERROR;
 	}
 	context->threadPool.pDestroy(context);
 	context->threadPool = *pThreadPool;
+	return RUVM_SUCCESS;
 }
 
 void ruvmThreadPoolSetDefault(RuvmContext context) {
