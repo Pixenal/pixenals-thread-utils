@@ -39,23 +39,25 @@ void ruvmMutexDestroy(void *pThreadPool, void *pMutex) {
 
 void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	WaitForSingleObject(&pState->jobMutex, INFINITE);
+	WaitForSingleObject(pState->jobMutex, INFINITE);
 	if (pState->jobStackSize > 0) {
 		pState->jobStackSize--;
 		*pJob = pState->jobStack[pState->jobStackSize];
+		pState->jobStack[pState->jobStackSize] = NULL;
 		*pArgs = pState->argStack[pState->jobStackSize];
+		pState->argStack[pState->jobStackSize] = NULL;
 	}
 	else {
 		*pJob = *pArgs = NULL;
 	}
-	ReleaseMutex(&pState->jobMutex);
+	ReleaseMutex(pState->jobMutex);
 	return;
 }
 
 static bool checkRunFlag(ThreadPool *pState) {
-	WaitForSingleObject(&pState->jobMutex, INFINITE);
+	WaitForSingleObject(pState->jobMutex, INFINITE);
 	bool run = pState->run;
-	ReleaseMutex(&pState->jobMutex);
+	ReleaseMutex(pState->jobMutex);
 	return run;
 }
 
@@ -81,10 +83,10 @@ static unsigned long threadLoop(void *pArgs) {
 int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
                              void (*pJob)(void *), void **pJobArgs) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	WaitForSingleObject(&pState->jobMutex, INFINITE);
+	WaitForSingleObject(pState->jobMutex, INFINITE);
 	int32_t nextTop = pState->jobStackSize + jobAmount;
 	if (nextTop > MAX_THREADS) {
-		ReleaseMutex(&pState->jobMutex);
+		ReleaseMutex(pState->jobMutex);
 		return 1;
 	}
 	for (int32_t i = 0; i < jobAmount; ++i) {
@@ -92,7 +94,7 @@ int32_t ruvmJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
 		pState->jobStack[pState->jobStackSize] = pJob;
 		pState->jobStackSize++;
 	}
-	ReleaseMutex(&pState->jobMutex);
+	ReleaseMutex(pState->jobMutex);
 	return 0;
 }
 
@@ -122,12 +124,12 @@ void ruvmThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 void ruvmThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	if (pState->threadAmount > 1) {
-		WaitForSingleObject(&pState->jobMutex, INFINITE);
+		WaitForSingleObject(pState->jobMutex, INFINITE);
 		pState->run = 0;
-		ReleaseMutex(&pState->jobMutex);
+		ReleaseMutex(pState->jobMutex);
 		WaitForMultipleObjects(pState->threadAmount, pState->threads, 1, INFINITE);
 	}
-	CloseHandle(&pState->jobMutex);
+	CloseHandle(pState->jobMutex);
 	pState->allocator.pFree(pState);
 }
 
