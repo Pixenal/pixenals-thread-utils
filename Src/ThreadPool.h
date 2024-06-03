@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <RUVM.h>
 
-#define MAX_THREADS 8
+#define MAX_THREADS 1
 
 void ruvmInitThreadPool(void **pThreadPool, int32_t *ThreadCount, RuvmAlloc *pAlloc);
 void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **jobArgs);
