@@ -37,6 +37,23 @@ void ruvmMutexDestroy(void *pThreadPool, void *pMutex) {
 	CloseHandle(mutex);
 }
 
+void ruvmBarrierGet(void *pThreadPool, void **ppBarrier) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	int32_t size = sizeof(SYNCHRONIZATION_BARRIER);
+	*ppBarrier = pState->allocator.pCalloc(1, size);
+	InitializeSynchronizationBarrier(*ppBarrier, pState->threadAmount, -1);
+}
+
+bool ruvmBarrierWait(void *pThreadPool, void *pBarrier) {
+	return EnterSynchronizationBarrier(pBarrier, 0);
+}
+
+void ruvmBarrierDestroy(void *pThreadPool, void *pBarrier) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	DeleteSynchronizationBarrier(pBarrier);
+	pState->allocator.pFree(pBarrier);
+}
+
 void ruvmJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
@@ -152,6 +169,9 @@ void ruvmThreadPoolSetDefault(RuvmContext context) {
 	context->threadPool.pMutexLock = ruvmMutexLock;
 	context->threadPool.pMutexUnlock = ruvmMutexUnlock;
 	context->threadPool.pMutexDestroy = ruvmMutexDestroy;
+	context->threadPool.pBarrierGet = ruvmBarrierGet;
+	context->threadPool.pBarrierWait = ruvmBarrierWait;
+	context->threadPool.pBarrierDestroy = ruvmBarrierDestroy;
 	context->threadPool.pJobStackGetJob = ruvmJobStackGetJob;
 	context->threadPool.pJobStackPushJobs = ruvmJobStackPushJobs;
 }
