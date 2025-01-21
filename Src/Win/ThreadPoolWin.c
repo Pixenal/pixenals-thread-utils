@@ -37,11 +37,11 @@ void ruvmMutexDestroy(void *pThreadPool, void *pMutex) {
 	CloseHandle(mutex);
 }
 
-void ruvmBarrierGet(void *pThreadPool, void **ppBarrier) {
+void ruvmBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	int32_t size = sizeof(SYNCHRONIZATION_BARRIER);
 	*ppBarrier = pState->allocator.pCalloc(1, size);
-	InitializeSynchronizationBarrier(*ppBarrier, pState->threadAmount, -1);
+	InitializeSynchronizationBarrier(*ppBarrier, jobCount, -1);
 }
 
 bool ruvmBarrierWait(void *pThreadPool, void *pBarrier) {
@@ -78,19 +78,26 @@ static bool checkRunFlag(ThreadPool *pState) {
 	return run;
 }
 
+bool ruvmGetAndDoJob(void *pThreadPool) {
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	void (*pJob)(void *) = NULL;
+	void *pJobArgs = NULL;
+	ruvmJobStackGetJob(pState, &pJob, &pJobArgs);
+	if (!pJob) {
+		return false;
+	}
+	pJob(pJobArgs);
+	return true;
+}
+
 static unsigned long threadLoop(void *pArgs) {
 	ThreadPool *pState = (ThreadPool *)pArgs;
 	while(1) {
 		if (!checkRunFlag(pState)) {
 			break;
 		}
-		void (*pJob)(void *) = NULL;
-		void *pJobArgs = NULL;
-		ruvmJobStackGetJob(pState, &pJob, &pJobArgs);
-		if (pJob) {
-			pJob(pJobArgs);
-		}
-		else {
+		bool gotJob = ruvmGetAndDoJob(pArgs);
+		if (!gotJob) {
 			Sleep(25);
 		}
 	}
@@ -174,4 +181,5 @@ void ruvmThreadPoolSetDefault(RuvmContext context) {
 	context->threadPool.pBarrierDestroy = ruvmBarrierDestroy;
 	context->threadPool.pJobStackGetJob = ruvmJobStackGetJob;
 	context->threadPool.pJobStackPushJobs = ruvmJobStackPushJobs;
+	context->threadPool.pGetAndDoJob = ruvmGetAndDoJob;
 }
