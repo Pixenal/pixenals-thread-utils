@@ -1,20 +1,20 @@
 #pragma once
 #include <stdint.h>
-#include <RUVM.h>
+#include <UvStucco.h>
 
 #define MAX_THREADS 8
 
-void uvsThreadPoolInit(void **pThreadPool, int32_t *ThreadCount, RuvmAlloc *pAlloc);
-void uvsJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **jobArgs);
-int32_t uvsJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void (*job)(void *), void **pJobArgs);
-bool uvsGetAndDoJob(void *pThreadPool);
-void uvsMutexGet(void *pThreadPool, void **pMutex);
-void uvsMutexLock(void *pThreadPool, void *pMutex);
-void uvsMutexUnlock(void *pThreadPool, void *pMutex);
-void uvsMutexDestroy(void *pThreadPool, void *pMutex);
-void uvsBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount);
-bool uvsBarrierWait(void *pThreadPool, void *pBarrier);
-void uvsBarrierDestroy(void *pThreadPool, void *pBarrier);
-void uvsThreadPoolDestroy(void *pThreadPool);
+void stucThreadPoolInit(void **pThreadPool, int32_t *ThreadCount, StucAlloc *pAlloc);
+void stucJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **jobArgs);
+int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void (*job)(void *), void **pJobArgs);
+bool stucGetAndDoJob(void *pThreadPool);
+void stucMutexGet(void *pThreadPool, void **pMutex);
+void stucMutexLock(void *pThreadPool, void *pMutex);
+void stucMutexUnlock(void *pThreadPool, void *pMutex);
+void stucMutexDestroy(void *pThreadPool, void *pMutex);
+void stucBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount);
+bool stucBarrierWait(void *pThreadPool, void *pBarrier);
+void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
+void stucThreadPoolDestroy(void *pThreadPool);
 
-void uvsThreadPoolSetDefault(RuvmContext context);
+void stucThreadPoolSetDefault(StucContext context);
