@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <UvStucco.h>
 
-#define MAX_THREADS 8
+#define MAX_THREADS 1
 
 void stucThreadPoolInit(void **pThreadPool, int32_t *ThreadCount, StucAlloc *pAlloc);
 void stucJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **jobArgs);
