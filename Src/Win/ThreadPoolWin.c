@@ -205,7 +205,7 @@ void stucThreadPoolSetDefault(StucContext context) {
 }
 
 //TODO replace custom barrier with system barrier?
-StucResult stucWaitForJobs(void *pThreadPool, int32_t jobCount, void **ppJobsVoid) {
+StucResult stucWaitForJobsIntern(void *pThreadPool, int32_t jobCount, void **ppJobsVoid) {
 	StucResult err = STUC_SUCCESS;
 	STUC_THROW_IF(err, jobCount > 0, "", 0);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
