@@ -5,6 +5,21 @@
 
 #include <ThreadPool.h>
 #include <Context.h>
+#include <Error.h>
+
+#define JOB_STACK_SIZE 128
+
+typedef struct {
+	StucResult (*pJob) (void *);
+	void *pArgs;
+	HANDLE pMutex;
+	StucResult err;
+} StucJob;
+
+typedef struct {
+	StucJob *stack[JOB_STACK_SIZE];
+	int32_t count;
+} StucJobStack;
 
 typedef struct {
 	HANDLE threads[MAX_THREADS];
@@ -12,10 +27,8 @@ typedef struct {
 	int32_t threadAmount;
 	HANDLE jobMutex;
 	int32_t run;
-	void *jobStack[MAX_THREADS];
-	void *argStack[MAX_THREADS];
-	int32_t jobStackSize;
-	StucAlloc allocator;
+	StucJobStack jobs;
+	StucAlloc alloc;
 } ThreadPool;
 
 void stucMutexGet(void *pThreadPool, void **pMutex) {
@@ -40,7 +53,7 @@ void stucMutexDestroy(void *pThreadPool, void *pMutex) {
 void stucBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	int32_t size = sizeof(SYNCHRONIZATION_BARRIER);
-	*ppBarrier = pState->allocator.pCalloc(1, size);
+	*ppBarrier = pState->alloc.pCalloc(1, size);
 	InitializeSynchronizationBarrier(*ppBarrier, jobCount, -1);
 }
 
@@ -51,27 +64,27 @@ bool stucBarrierWait(void *pThreadPool, void *pBarrier) {
 void stucBarrierDestroy(void *pThreadPool, void *pBarrier) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	DeleteSynchronizationBarrier(pBarrier);
-	pState->allocator.pFree(pBarrier);
+	pState->alloc.pFree(pBarrier);
 }
 
-void stucJobStackGetJob(void *pThreadPool, void (**pJob)(void *), void **pArgs) {
+static
+void stucJobStackGetJob(void *pThreadPool, void **pJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
-	if (pState->jobStackSize > 0) {
-		pState->jobStackSize--;
-		*pJob = pState->jobStack[pState->jobStackSize];
-		pState->jobStack[pState->jobStackSize] = NULL;
-		*pArgs = pState->argStack[pState->jobStackSize];
-		pState->argStack[pState->jobStackSize] = NULL;
+	if (pState->jobs.count > 0) {
+		pState->jobs.count--;
+		*pJob = pState->jobs.stack[pState->jobs.count];
+		pState->jobs.stack[pState->jobs.count] = NULL;
 	}
 	else {
-		*pJob = *pArgs = NULL;
+		*pJob = NULL;
 	}
 	ReleaseMutex(pState->jobMutex);
 	return;
 }
 
-static bool checkRunFlag(ThreadPool *pState) {
+static
+bool checkRunFlag(ThreadPool *pState) {
 	WaitForSingleObject(pState->jobMutex, INFINITE);
 	bool run = pState->run;
 	ReleaseMutex(pState->jobMutex);
@@ -80,17 +93,20 @@ static bool checkRunFlag(ThreadPool *pState) {
 
 bool stucGetAndDoJob(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	void (*pJob)(void *) = NULL;
-	void *pJobArgs = NULL;
-	stucJobStackGetJob(pState, &pJob, &pJobArgs);
+	StucJob *pJob = NULL;
+	stucJobStackGetJob(pState, &pJob);
 	if (!pJob) {
 		return false;
 	}
-	pJob(pJobArgs);
+	StucResult err = pJob->pJob(pJob->pArgs);
+	WaitForSingleObject(pJob->pMutex, INFINITE);
+	pJob->err = err;
+	ReleaseMutex(pJob->pMutex);
 	return true;
 }
 
-static unsigned long threadCorner(void *pArgs) {
+static
+unsigned long threadLoop(void *pArgs) {
 	ThreadPool *pState = (ThreadPool *)pArgs;
 	while(1) {
 		if (!checkRunFlag(pState)) {
@@ -104,19 +120,23 @@ static unsigned long threadCorner(void *pArgs) {
 	return 0;
 }
 
-int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount,
-                             void (*pJob)(void *), void **pJobArgs) {
+int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void **ppJobHandles,
+                             StucResult (*pJob)(void *), void **pJobArgs) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
-	int32_t nextTop = pState->jobStackSize + jobAmount;
+	int32_t nextTop = pState->jobs.count + jobAmount;
 	if (nextTop > MAX_THREADS) {
 		ReleaseMutex(pState->jobMutex);
 		return 1;
 	}
 	for (int32_t i = 0; i < jobAmount; ++i) {
-		pState->argStack[pState->jobStackSize] = pJobArgs[i];
-		pState->jobStack[pState->jobStackSize] = pJob;
-		pState->jobStackSize++;
+		StucJob *pJobEntry = pState->alloc.pCalloc(1, sizeof(StucJob));
+		pJobEntry->pJob = pJob;
+		pJobEntry->pArgs = pJobArgs[i];
+		stucMutexGet(pThreadPool, &pJobEntry->pMutex);
+		pState->jobs.stack[pState->jobs.count] = pJobEntry;
+		pState->jobs.count++;
+		ppJobHandles[i] = pJobEntry;
 	}
 	ReleaseMutex(pState->jobMutex);
 	return 0;
@@ -126,7 +146,7 @@ void stucThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
                         StucAlloc *pAllocator) {
 	ThreadPool *pState = pAllocator->pCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
-	pState->allocator = *pAllocator;
+	pState->alloc = *pAllocator;
 	pState->jobMutex = CreateMutex(NULL, 0, NULL);
 	pState->run = 1;
 	SYSTEM_INFO systemInfo;
@@ -140,7 +160,7 @@ void stucThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 		return;
 	}
 	for (int32_t i = 0; i < pState->threadAmount; ++i) {
-		pState->threads[i] = CreateThread(NULL, 0, &threadCorner, pState, 0,
+		pState->threads[i] = CreateThread(NULL, 0, &threadLoop, pState, 0,
 				                  pState->threadIds + i);
 	}
 }
@@ -154,7 +174,7 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 		WaitForMultipleObjects(pState->threadAmount, pState->threads, 1, INFINITE);
 	}
 	CloseHandle(pState->jobMutex);
-	pState->allocator.pFree(pState);
+	pState->alloc.pFree(pState);
 }
 
 StucResult stucThreadPoolSetCustom(StucContext context, StucThreadPool *pThreadPool) {
@@ -182,4 +202,61 @@ void stucThreadPoolSetDefault(StucContext context) {
 	context->threadPool.pJobStackGetJob = stucJobStackGetJob;
 	context->threadPool.pJobStackPushJobs = stucJobStackPushJobs;
 	context->threadPool.pGetAndDoJob = stucGetAndDoJob;
+}
+
+//TODO replace custom barrier with system barrier?
+StucResult stucWaitForJobs(void *pThreadPool, int32_t jobCount, void **ppJobsVoid) {
+	StucResult err = STUC_SUCCESS;
+	STUC_THROW_IF(err, jobCount > 0, "", 0);
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	StucJob **ppJobs = ppJobsVoid;
+	int32_t finished = 0;
+	bool *pChecked = pState->alloc.pCalloc(jobCount, sizeof(bool));
+	do  {
+		bool gotJob = stucGetAndDoJob(pThreadPool);
+		for (int32_t i = 0; i < jobCount; ++i) {
+			if (pChecked[i]) {
+				continue;
+			}
+			WaitForSingleObject(ppJobs[i]->pMutex, INFINITE);
+			if (ppJobs[i]->err != STUC_NOT_SET) {
+				pChecked[i] = true;
+				finished++;
+			}
+			ReleaseMutex(ppJobs[i]->pMutex);
+		}
+		STUC_THROW_IF(err, finished <= jobCount && finished >= 0, "", 0);
+		if (finished == jobCount) {
+			break;
+		}
+		else if (!gotJob) {
+			Sleep(25);
+		}
+	} while(true);
+	STUC_CATCH(0, err, ;);
+	pState->alloc.pFree(pChecked);
+	return err;
+}
+
+StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr) {
+	StucResult err = STUC_SUCCESS;
+	STUC_THROW_IF(err, pThreadPool && pJobHandle && pJobErr, "", 0);
+	StucJob *pJob = pJobHandle;
+	*pJobErr = pJob->err;
+	STUC_CATCH(0, err, ;);
+	return err;
+}
+
+StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
+	StucResult err = STUC_SUCCESS;
+	STUC_THROW_IF(err, pThreadPool && ppJobHandle, "", 0);
+	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	StucJob *pJob = *ppJobHandle;
+	if (*ppJobHandle) {
+		stucMutexDestroy(pThreadPool, pJob->pMutex);
+		pState->alloc.pFree(pJob);
+		*ppJobHandle = NULL;
+	}
+	STUC_CATCH(0, err, ;);
+	return err;
 }
