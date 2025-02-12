@@ -3,7 +3,7 @@
 #include <UvStucco.h>
 
 #define MAX_THREADS 32
-#define MAX_SUB_MAPPING_JOBS 4
+#define MAX_SUB_MAPPING_JOBS 8
 #define MAX_MAPPING_JOBS 3
 
 void stucThreadPoolInit(void **pThreadPool, int32_t *ThreadCount, StucAlloc *pAlloc);
@@ -18,7 +18,8 @@ void stucBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount);
 bool stucBarrierWait(void *pThreadPool, void *pBarrier);
 void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
 void stucThreadPoolDestroy(void *pThreadPool);
-StucResult stucWaitForJobsIntern(void *pThreadPool, int32_t jobCount, void **ppJobs);
+StucResult stucWaitForJobsIntern(void *pThreadPool, int32_t jobCount, void **ppJobs,
+                                 bool wait, bool *pDone);
 StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr);
 StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle);
 
