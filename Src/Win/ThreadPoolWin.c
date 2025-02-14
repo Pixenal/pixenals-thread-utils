@@ -18,15 +18,15 @@ typedef struct {
 
 typedef struct {
 	StucJob *stack[JOB_STACK_SIZE];
-	int32_t count;
+	I32 count;
 } StucJobStack;
 
 typedef struct {
 	HANDLE threads[MAX_THREADS];
 	DWORD threadIds[MAX_THREADS];
-	int32_t threadAmount;
+	I32 threadAmount;
 	HANDLE jobMutex;
-	int32_t run;
+	I32 run;
 	StucJobStack jobs;
 	StucAlloc alloc;
 } ThreadPool;
@@ -50,9 +50,9 @@ void stucMutexDestroy(void *pThreadPool, void *pMutex) {
 	CloseHandle(mutex);
 }
 
-void stucBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount) {
+void stucBarrierGet(void *pThreadPool, void **ppBarrier, I32 jobCount) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	int32_t size = sizeof(SYNCHRONIZATION_BARRIER);
+	I32 size = sizeof(SYNCHRONIZATION_BARRIER);
 	*ppBarrier = pState->alloc.pCalloc(1, size);
 	InitializeSynchronizationBarrier(*ppBarrier, jobCount, -1);
 }
@@ -119,19 +119,19 @@ unsigned long threadLoop(void *pArgs) {
 	return 0;
 }
 
-int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void **ppJobHandles,
+I32 stucJobStackPushJobs(void *pThreadPool, I32 jobAmount, void **ppJobHandles,
                              StucResult (*pJob)(void *), void **pJobArgs) {
 	Result err = STUC_SUCCESS;
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	int32_t jobsPushed = 0;
+	I32 jobsPushed = 0;
 	do {
-		int32_t batchTop = jobAmount;
+		I32 batchTop = jobAmount;
 		WaitForSingleObject(pState->jobMutex, INFINITE);
-		int32_t nextTop = pState->jobs.count + jobAmount - jobsPushed;
+		I32 nextTop = pState->jobs.count + jobAmount - jobsPushed;
 		if (nextTop > JOB_STACK_SIZE) {
 			batchTop -= nextTop - JOB_STACK_SIZE;
 		}
-		for (int32_t i = jobsPushed; i < batchTop; ++i) {
+		for (I32 i = jobsPushed; i < batchTop; ++i) {
 			StucJob *pJobEntry = pState->alloc.pCalloc(1, sizeof(StucJob));
 			pJobEntry->pJob = pJob;
 			pJobEntry->pArgs = pJobArgs[i];
@@ -154,7 +154,7 @@ int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void **ppJobH
 	return 0;
 }
 
-void stucThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
+void stucThreadPoolInit(void **pThreadPool, I32 *pThreadCount,
                         const StucAlloc *pAlloc) {
 	ThreadPool *pState = pAlloc->pCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
@@ -171,7 +171,7 @@ void stucThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 	if (pState->threadAmount <= 1) {
 		return;
 	}
-	for (int32_t i = 0; i < pState->threadAmount; ++i) {
+	for (I32 i = 0; i < pState->threadAmount; ++i) {
 		pState->threads[i] = CreateThread(NULL, 0, &threadLoop, pState, 0,
 		                                  pState->threadIds + i);
 	}
@@ -219,14 +219,14 @@ void stucThreadPoolSetDefault(StucContext pContext) {
 	pContext->threadPool.pGetAndDoJob = stucGetAndDoJob;
 }
 
-StucResult stucWaitForJobsIntern(void *pThreadPool, int32_t jobCount, void **ppJobsVoid,
+StucResult stucWaitForJobsIntern(void *pThreadPool, I32 jobCount, void **ppJobsVoid,
                                  bool wait, bool *pDone) {
 	StucResult err = STUC_SUCCESS;
 	STUC_THROW_IF(err, jobCount > 0, "", 0);
 	STUC_THROW_IF(err, pDone || wait, "if wait is false, pDone must not be null", 0);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob **ppJobs = (StucJob **)ppJobsVoid;
-	int32_t finished = 0;
+	I32 finished = 0;
 	bool *pChecked = pState->alloc.pCalloc(jobCount, sizeof(bool));
 	if (!wait) {
 		*pDone = false;
@@ -236,7 +236,7 @@ StucResult stucWaitForJobsIntern(void *pThreadPool, int32_t jobCount, void **ppJ
 		if (wait) {
 			bool gotJob = stucGetAndDoJob(pThreadPool);
 		}
-		for (int32_t i = 0; i < jobCount; ++i) {
+		for (I32 i = 0; i < jobCount; ++i) {
 			if (pChecked[i]) {
 				continue;
 			}
