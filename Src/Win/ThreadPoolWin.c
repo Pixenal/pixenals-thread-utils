@@ -83,7 +83,7 @@ void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
 }
 
 static
-bool checkRunFlag(ThreadPool *pState) {
+bool checkRunFlag(const ThreadPool *pState) {
 	WaitForSingleObject(pState->jobMutex, INFINITE);
 	bool run = pState->run;
 	ReleaseMutex(pState->jobMutex);
@@ -105,8 +105,8 @@ bool stucGetAndDoJob(void *pThreadPool) {
 }
 
 static
-unsigned long threadLoop(void *pArgs) {
-	ThreadPool *pState = (ThreadPool *)pArgs;
+unsigned long threadLoop(const void *pArgs) {
+	const ThreadPool *pState = (ThreadPool *)pArgs;
 	while(1) {
 		if (!checkRunFlag(pState)) {
 			break;
@@ -120,7 +120,7 @@ unsigned long threadLoop(void *pArgs) {
 }
 
 I32 stucJobStackPushJobs(void *pThreadPool, I32 jobAmount, void **ppJobHandles,
-                             StucResult (*pJob)(void *), void **pJobArgs) {
+                         StucResult (*pJob)(void *), void **pJobArgs) {
 	Result err = STUC_SUCCESS;
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	I32 jobsPushed = 0;
