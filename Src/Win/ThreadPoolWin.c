@@ -68,16 +68,16 @@ void stucBarrierDestroy(void *pThreadPool, void *pBarrier) {
 }
 
 static
-void stucJobStackGetJob(void *pThreadPool, void **pJob) {
+void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
 	if (pState->jobs.count > 0) {
 		pState->jobs.count--;
-		*pJob = pState->jobs.stack[pState->jobs.count];
+		*ppJob = pState->jobs.stack[pState->jobs.count];
 		pState->jobs.stack[pState->jobs.count] = NULL;
 	}
 	else {
-		*pJob = NULL;
+		*ppJob = NULL;
 	}
 	ReleaseMutex(pState->jobMutex);
 	return;
@@ -174,7 +174,7 @@ void stucThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
 	}
 	for (int32_t i = 0; i < pState->threadAmount; ++i) {
 		pState->threads[i] = CreateThread(NULL, 0, &threadLoop, pState, 0,
-				                  pState->threadIds + i);
+		                                  pState->threadIds + i);
 	}
 }
 
@@ -193,7 +193,7 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 StucResult stucThreadPoolSetCustom(StucContext pContext, StucThreadPool *pThreadPool) {
 	if (!pThreadPool->pInit || !pThreadPool->pDestroy || !pThreadPool->pMutexGet ||
 	    !pThreadPool->pMutexLock || !pThreadPool->pMutexUnlock || !pThreadPool->pMutexDestroy ||
-		!pThreadPool->pJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
+	    !pThreadPool->pJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
 		printf("Failed to set custom thread pool. One or more functions were NULL");
 		return STUC_ERROR;
 	}
@@ -226,13 +226,13 @@ StucResult stucWaitForJobsIntern(void *pThreadPool, int32_t jobCount, void **ppJ
 	STUC_THROW_IF(err, jobCount > 0, "", 0);
 	STUC_THROW_IF(err, pDone || wait, "if wait is false, pDone must not be null", 0);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob **ppJobs = ppJobsVoid;
+	StucJob **ppJobs = (StucJob **)ppJobsVoid;
 	int32_t finished = 0;
 	bool *pChecked = pState->alloc.pCalloc(jobCount, sizeof(bool));
 	if (!wait) {
 		*pDone = false;
 	}
-	do  {
+	do {
 		bool gotJob = false;
 		if (wait) {
 			bool gotJob = stucGetAndDoJob(pThreadPool);
