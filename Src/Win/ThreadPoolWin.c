@@ -67,7 +67,6 @@ void stucBarrierDestroy(void *pThreadPool, void *pBarrier) {
 	pState->alloc.pFree(pBarrier);
 }
 
-static
 void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
@@ -156,10 +155,10 @@ int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void **ppJobH
 }
 
 void stucThreadPoolInit(void **pThreadPool, int32_t *pThreadCount,
-                        StucAlloc *pAllocator) {
-	ThreadPool *pState = pAllocator->pCalloc(1, sizeof(ThreadPool));
+                        const StucAlloc *pAlloc) {
+	ThreadPool *pState = pAlloc->pCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
-	pState->alloc = *pAllocator;
+	pState->alloc = *pAlloc;
 	pState->jobMutex = CreateMutex(NULL, 0, NULL);
 	pState->run = 1;
 	SYSTEM_INFO systemInfo;
@@ -190,7 +189,7 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 	pState->alloc.pFree(pState);
 }
 
-StucResult stucThreadPoolSetCustom(StucContext pContext, StucThreadPool *pThreadPool) {
+StucResult stucThreadPoolSetCustom(StucContext pContext, const StucThreadPool *pThreadPool) {
 	if (!pThreadPool->pInit || !pThreadPool->pDestroy || !pThreadPool->pMutexGet ||
 	    !pThreadPool->pMutexLock || !pThreadPool->pMutexUnlock || !pThreadPool->pMutexDestroy ||
 	    !pThreadPool->pJobStackGetJob || !pThreadPool->pJobStackPushJobs) {

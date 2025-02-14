@@ -6,7 +6,7 @@
 #define MAX_SUB_MAPPING_JOBS 8
 #define MAX_MAPPING_JOBS 3
 
-void stucThreadPoolInit(void **pThreadPool, int32_t *ThreadCount, StucAlloc *pAlloc);
+void stucThreadPoolInit(void **pThreadPool, int32_t *ThreadCount, const StucAlloc *pAlloc);
 int32_t stucJobStackPushJobs(void *pThreadPool, int32_t jobAmount, void **ppJobHandles,
                              StucResult (*pJob)(void *), void **pJobArgs);
 bool stucGetAndDoJob(void *pThreadPool);
