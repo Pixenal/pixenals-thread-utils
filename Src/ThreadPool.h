@@ -8,9 +8,18 @@
 #define MAX_SUB_MAPPING_JOBS 8
 #define MAX_MAPPING_JOBS 3
 
-void stucThreadPoolInit(void **pThreadPool, I32 *ThreadCount, const StucAlloc *pAlloc);
-I32 stucJobStackPushJobs(void *pThreadPool, I32 jobAmount, void **ppJobHandles,
-                             StucResult (*pJob)(void *), void **pJobArgs);
+void stucThreadPoolInit(
+	void **pThreadPool,
+	I32 *ThreadCount,
+	const StucAlloc *pAlloc
+);
+I32 stucJobStackPushJobs(
+	void *pThreadPool,
+	I32 jobAmount,
+	void **ppJobHandles,
+	StucResult(*pJob)(void *),
+	void **pJobArgs
+);
 bool stucGetAndDoJob(void *pThreadPool);
 void stucMutexGet(void *pThreadPool, void **pMutex);
 void stucMutexLock(void *pThreadPool, void *pMutex);
@@ -20,8 +29,13 @@ void stucBarrierGet(void *pThreadPool, void **ppBarrier, I32 jobCount);
 bool stucBarrierWait(void *pThreadPool, void *pBarrier);
 void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
 void stucThreadPoolDestroy(void *pThreadPool);
-StucResult stucWaitForJobsIntern(void *pThreadPool, I32 jobCount, void **ppJobs,
-                                 bool wait, bool *pDone);
+StucResult stucWaitForJobsIntern(
+	void *pThreadPool,
+	I32 jobCount,
+	void **ppJobs,
+	bool wait,
+	bool *pDone
+);
 StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr);
 StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle);
 
