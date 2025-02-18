@@ -119,7 +119,7 @@ unsigned long threadLoop(void *pArgs) {
 	return 0;
 }
 
-I32 stucJobStackPushJobs(
+Result stucJobStackPushJobs(
 	void *pThreadPool,
 	I32 jobAmount,
 	void **ppJobHandles,
@@ -147,7 +147,7 @@ I32 stucJobStackPushJobs(
 			jobsPushed++;
 		}
 		ReleaseMutex(pState->jobMutex);
-		STUC_THROW_IF(err, jobsPushed >= 0 && jobsPushed <= jobAmount, "", 0);
+		STUC_ASSERT("", jobsPushed >= 0 && jobsPushed <= jobAmount);
 		if (jobsPushed == jobAmount) {
 			break;
 		}
@@ -156,7 +156,7 @@ I32 stucJobStackPushJobs(
 		}
 	} while(true);
 	STUC_CATCH(0, err, ;);
-	return 0;
+	return err;
 }
 
 void stucThreadPoolInit(
@@ -238,8 +238,8 @@ StucResult stucWaitForJobsIntern(
 	bool *pDone
 ) {
 	StucResult err = STUC_SUCCESS;
-	STUC_THROW_IF(err, jobCount > 0, "", 0);
-	STUC_THROW_IF(err, pDone || wait, "if wait is false, pDone must not be null", 0);
+	STUC_ASSERT("", jobCount > 0);
+	STUC_ASSERT("if wait is false, pDone must not be null", pDone || wait);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob **ppJobs = (StucJob **)ppJobsVoid;
 	I32 finished = 0;
@@ -263,7 +263,7 @@ StucResult stucWaitForJobsIntern(
 			}
 			ReleaseMutex(ppJobs[i]->pMutex);
 		}
-		STUC_THROW_IF(err, finished <= jobCount && finished >= 0, "", 1);
+		STUC_ASSERT("", finished <= jobCount && finished >= 0);
 		if (finished == jobCount) {
 			if (!wait) {
 				*pDone = true;
@@ -282,7 +282,7 @@ StucResult stucWaitForJobsIntern(
 
 StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr) {
 	StucResult err = STUC_SUCCESS;
-	STUC_THROW_IF(err, pThreadPool && pJobHandle && pJobErr, "", 0);
+	STUC_ASSERT("", pThreadPool && pJobHandle && pJobErr);
 	StucJob *pJob = pJobHandle;
 	*pJobErr = pJob->err;
 	STUC_CATCH(0, err, ;);
@@ -291,7 +291,7 @@ StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobEr
 
 StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
 	StucResult err = STUC_SUCCESS;
-	STUC_THROW_IF(err, pThreadPool && ppJobHandle, "", 0);
+	STUC_ASSERT("", pThreadPool && ppJobHandle);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob *pJob = *ppJobHandle;
 	if (*ppJobHandle) {

@@ -13,7 +13,7 @@ void stucThreadPoolInit(
 	I32 *ThreadCount,
 	const StucAlloc *pAlloc
 );
-I32 stucJobStackPushJobs(
+StucResult stucJobStackPushJobs(
 	void *pThreadPool,
 	I32 jobAmount,
 	void **ppJobHandles,
