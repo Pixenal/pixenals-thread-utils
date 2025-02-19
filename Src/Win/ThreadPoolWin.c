@@ -24,11 +24,11 @@ typedef struct {
 typedef struct {
 	HANDLE threads[MAX_THREADS];
 	DWORD threadIds[MAX_THREADS];
-	I32 threadAmount;
-	HANDLE jobMutex;
-	I32 run;
 	StucJobStack jobs;
 	StucAlloc alloc;
+	HANDLE jobMutex;
+	I32 threadAmount;
+	I32 run;
 } ThreadPool;
 
 void stucMutexGet(void *pThreadPool, void **pMutex) {
