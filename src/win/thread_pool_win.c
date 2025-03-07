@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <ThreadPool.h>
-#include <Context.h>
-#include <Error.h>
+#include <thread_pool.h>
+#include <context.h>
+#include <error.h>
 
 #define JOB_STACK_SIZE 128
 

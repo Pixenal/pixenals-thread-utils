@@ -1,8 +1,8 @@
 #pragma once
 #include <stdint.h>
 
-#include <UvStucco.h>
-#include <Types.h>
+#include <uv_stucco.h>
+#include <types.h>
 
 #define MAX_THREADS 32
 #define MAX_SUB_MAPPING_JOBS 8
