@@ -43,7 +43,7 @@ typedef struct {
 
 void stucMutexGet(void *pThreadPool, void **pMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	*pMutex = pState->alloc.pMalloc(sizeof(pthread_mutex_t));
+	*pMutex = pState->alloc.fpMalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(*pMutex, NULL);
 }
 
@@ -58,9 +58,8 @@ void stucMutexUnlock(void *pThreadPool, void *pMutex) {
 void stucMutexDestroy(void *pThreadPool, void *pMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	pthread_mutex_destroy(pMutex);
-	pState->alloc.pFree(pMutex);
+	pState->alloc.fpFree(pMutex);
 }
-
 
 void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
@@ -88,7 +87,7 @@ bool checkRunFlag(ThreadPool *pState) {
 bool stucGetAndDoJob(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob *pJob = NULL;
-	stucJobStackGetJob(pState, &pJob);
+	stucJobStackGetJob(pState, (void **)&pJob);
 	if (!pJob) {
 		return false;
 	}
@@ -136,10 +135,10 @@ Result stucJobStackPushJobs(
 			batchTop -= nextTop - JOB_STACK_SIZE;
 		}
 		for (I32 i = jobsPushed; i < batchTop; ++i) {
-			StucJob *pJobEntry = pState->alloc.pCalloc(1, sizeof(StucJob));
+			StucJob *pJobEntry = pState->alloc.fpCalloc(1, sizeof(StucJob));
 			pJobEntry->pJob = pJob;
 			pJobEntry->pArgs = pJobArgs[i];
-			stucMutexGet(pThreadPool, &pJobEntry->pMutex);
+			stucMutexGet(pThreadPool, (void **)&pJobEntry->pMutex);
 			pState->jobs.stack[pState->jobs.count] = pJobEntry;
 			pState->jobs.count++;
 			ppJobHandles[i] = pJobEntry;
@@ -163,10 +162,10 @@ void stucThreadPoolInit(
 		I32 *pThreadCount,
         const StucAlloc *pAlloc
 ) {
-	ThreadPool *pState = pAlloc->pCalloc(1, sizeof(ThreadPool));
+	ThreadPool *pState = pAlloc->fpCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
 	pState->alloc = *pAlloc;
-	pthread_mutex_init(pState->pJobMutex, NULL);
+	stucMutexGet(pState, (void **)&pState->pJobMutex);
 	pState->run = 1;
 #ifdef __APPLE_CC__
 	uint64_t count = 0;
@@ -201,19 +200,19 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 			pthread_join(pState->threads[i], NULL);
 		}
 	}
-	pthread_mutex_destroy(pState->pJobMutex);
-	pState->alloc.pFree(pState);
+	stucMutexDestroy(pState, &pState->pJobMutex);
+	pState->alloc.fpFree(pState);
 }
 
 //TODO update to check for new functions
-Result stucThreadPoolSetCustom(StucContext pCtx, StucThreadPool *pThreadPool) {
-	if (!pThreadPool->pInit || !pThreadPool->pDestroy || !pThreadPool->pMutexGet ||
-	    !pThreadPool->pMutexLock || !pThreadPool->pMutexUnlock || !pThreadPool->pMutexDestroy ||
-		!pThreadPool->pJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
+Result stucThreadPoolSetCustom(StucContext pCtx, const StucThreadPool *pThreadPool) {
+	if (!pThreadPool->fpInit || !pThreadPool->fpDestroy || !pThreadPool->fpMutexGet ||
+	    !pThreadPool->fpMutexLock || !pThreadPool->fpMutexUnlock || !pThreadPool->fpMutexDestroy ||
+		!pThreadPool->fpJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
 		printf("Failed to set custom thread pool. One or more functions were NULL");
 		return STUC_ERROR;
 	}
-	pCtx->threadPool.pDestroy(pCtx);
+	pCtx->threadPool.fpDestroy(pCtx);
 	pCtx->threadPool = *pThreadPool;
 	return STUC_SUCCESS;
 }
@@ -233,7 +232,7 @@ StucResult stucWaitForJobsIntern(
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob **ppJobs = (StucJob **)ppJobsVoid;
 	I32 finished = 0;
-	bool *pChecked = pState->alloc.pCalloc(jobCount, sizeof(bool));
+	bool *pChecked = pState->alloc.fpCalloc(jobCount, sizeof(bool));
 	if (!wait) {
 		*pDone = false;
 	}
@@ -265,7 +264,7 @@ StucResult stucWaitForJobsIntern(
 		}
 	} while(wait);
 	STUC_CATCH(1, err, ;);
-	pState->alloc.pFree(pChecked);
+	pState->alloc.fpFree(pChecked);
 	STUC_CATCH(0, err, ;);
 	return err;
 }
@@ -286,7 +285,7 @@ StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
 	StucJob *pJob = *ppJobHandle;
 	if (*ppJobHandle) {
 		stucMutexDestroy(pThreadPool, pJob->pMutex);
-		pState->alloc.pFree(pJob);
+		pState->alloc.fpFree(pJob);
 		*ppJobHandle = NULL;
 	}
 	STUC_CATCH(0, err, ;);
@@ -294,19 +293,21 @@ StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
 }
 
 void stucThreadPoolSetDefault(StucContext pCtx) {
-	pCtx->threadPool.pInit = stucThreadPoolInit;
-	pCtx->threadPool.pWaitForJobs = stucWaitForJobsIntern;
-	pCtx->threadPool.pGetJobErr = stucGetJobErr;
-	pCtx->threadPool.pJobHandleDestroy = stucJobHandleDestroy;
-	pCtx->threadPool.pDestroy = stucThreadPoolDestroy;
-	pCtx->threadPool.pMutexGet = stucMutexGet;
-	pCtx->threadPool.pMutexLock = stucMutexLock;
-	pCtx->threadPool.pMutexUnlock = stucMutexUnlock;
-	pCtx->threadPool.pMutexDestroy = stucMutexDestroy;
-	pCtx->threadPool.pBarrierGet = stucBarrierGet;
-	pCtx->threadPool.pBarrierWait = stucBarrierWait;
-	pCtx->threadPool.pBarrierDestroy = stucBarrierDestroy;
-	pCtx->threadPool.pJobStackGetJob = stucJobStackGetJob;
+	pCtx->threadPool.fpInit = stucThreadPoolInit;
+	pCtx->threadPool.fpWaitForJobs = stucWaitForJobsIntern;
+	pCtx->threadPool.fpGetJobErr = stucGetJobErr;
+	pCtx->threadPool.fpJobHandleDestroy = stucJobHandleDestroy;
+	pCtx->threadPool.fpDestroy = stucThreadPoolDestroy;
+	pCtx->threadPool.fpMutexGet = stucMutexGet;
+	pCtx->threadPool.fpMutexLock = stucMutexLock;
+	pCtx->threadPool.fpMutexUnlock = stucMutexUnlock;
+	pCtx->threadPool.fpMutexDestroy = stucMutexDestroy;
+	/*
+	pCtx->threadPool.fpBarrierGet = stucBarrierGet;
+	pCtx->threadPool.fpBarrierWait = stucBarrierWait;
+	pCtx->threadPool.fpBarrierDestroy = stucBarrierDestroy;
+	*/
+	pCtx->threadPool.fpJobStackGetJob = stucJobStackGetJob;
 	pCtx->threadPool.pJobStackPushJobs = stucJobStackPushJobs;
-	pCtx->threadPool.pGetAndDoJob = stucGetAndDoJob;
+	pCtx->threadPool.fpGetAndDoJob = stucGetAndDoJob;
 }

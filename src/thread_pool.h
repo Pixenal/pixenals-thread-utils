@@ -30,9 +30,11 @@ void stucMutexGet(void *pThreadPool, void **pMutex);
 void stucMutexLock(void *pThreadPool, void *pMutex);
 void stucMutexUnlock(void *pThreadPool, void *pMutex);
 void stucMutexDestroy(void *pThreadPool, void *pMutex);
+/*
 void stucBarrierGet(void *pThreadPool, void **ppBarrier, I32 jobCount);
 bool stucBarrierWait(void *pThreadPool, void *pBarrier);
 void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
+*/
 void stucThreadPoolDestroy(void *pThreadPool);
 StucResult stucWaitForJobsIntern(
 	void *pThreadPool,

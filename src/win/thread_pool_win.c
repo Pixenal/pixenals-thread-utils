@@ -55,6 +55,7 @@ void stucMutexDestroy(void *pThreadPool, void *pMutex) {
 	CloseHandle(mutex);
 }
 
+/*
 void stucBarrierGet(void *pThreadPool, void **ppBarrier, I32 jobCount) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	I32 size = sizeof(SYNCHRONIZATION_BARRIER);
@@ -71,6 +72,7 @@ void stucBarrierDestroy(void *pThreadPool, void *pBarrier) {
 	DeleteSynchronizationBarrier(pBarrier);
 	pState->alloc.fpFree(pBarrier);
 }
+*/
 
 void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
@@ -217,24 +219,6 @@ StucResult stucThreadPoolSetCustom(
 	return STUC_SUCCESS;
 }
 
-void stucThreadPoolSetDefault(StucContext pCtx) {
-	pCtx->threadPool.fpInit = stucThreadPoolInit;
-	pCtx->threadPool.fpWaitForJobs = stucWaitForJobsIntern;
-	pCtx->threadPool.fpGetJobErr = stucGetJobErr;
-	pCtx->threadPool.fpJobHandleDestroy = stucJobHandleDestroy;
-	pCtx->threadPool.fpDestroy = stucThreadPoolDestroy;
-	pCtx->threadPool.fpMutexGet = stucMutexGet;
-	pCtx->threadPool.fpMutexLock = stucMutexLock;
-	pCtx->threadPool.fpMutexUnlock = stucMutexUnlock;
-	pCtx->threadPool.fpMutexDestroy = stucMutexDestroy;
-	pCtx->threadPool.fpBarrierGet = stucBarrierGet;
-	pCtx->threadPool.fpBarrierWait = stucBarrierWait;
-	pCtx->threadPool.fpBarrierDestroy = stucBarrierDestroy;
-	pCtx->threadPool.fpJobStackGetJob = stucJobStackGetJob;
-	pCtx->threadPool.pJobStackPushJobs = stucJobStackPushJobs;
-	pCtx->threadPool.fpGetAndDoJob = stucGetAndDoJob;
-}
-
 StucResult stucWaitForJobsIntern(
 	void *pThreadPool,
 	I32 jobCount,
@@ -306,4 +290,24 @@ StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
 	}
 	STUC_CATCH(0, err, ;);
 	return err;
+}
+
+void stucThreadPoolSetDefault(StucContext pCtx) {
+	pCtx->threadPool.fpInit = stucThreadPoolInit;
+	pCtx->threadPool.fpWaitForJobs = stucWaitForJobsIntern;
+	pCtx->threadPool.fpGetJobErr = stucGetJobErr;
+	pCtx->threadPool.fpJobHandleDestroy = stucJobHandleDestroy;
+	pCtx->threadPool.fpDestroy = stucThreadPoolDestroy;
+	pCtx->threadPool.fpMutexGet = stucMutexGet;
+	pCtx->threadPool.fpMutexLock = stucMutexLock;
+	pCtx->threadPool.fpMutexUnlock = stucMutexUnlock;
+	pCtx->threadPool.fpMutexDestroy = stucMutexDestroy;
+	/*
+	pCtx->threadPool.fpBarrierGet = stucBarrierGet;
+	pCtx->threadPool.fpBarrierWait = stucBarrierWait;
+	pCtx->threadPool.fpBarrierDestroy = stucBarrierDestroy;
+	*/
+	pCtx->threadPool.fpJobStackGetJob = stucJobStackGetJob;
+	pCtx->threadPool.pJobStackPushJobs = stucJobStackPushJobs;
+	pCtx->threadPool.fpGetAndDoJob = stucGetAndDoJob;
 }
