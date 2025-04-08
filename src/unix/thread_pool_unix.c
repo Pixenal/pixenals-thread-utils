@@ -41,10 +41,10 @@ typedef struct {
 	I32 run;
 } ThreadPool;
 
-void stucMutexGet(void *pThreadPool, void **pMutex) {
+void stucMutexGet(void *pThreadPool, void **ppMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	*pMutex = pState->alloc.fpMalloc(sizeof(pthread_mutex_t));
-	pthread_mutex_init(*pMutex, NULL);
+	*ppMutex = pState->alloc.fpMalloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(*ppMutex, NULL);
 }
 
 void stucMutexLock(void *pThreadPool, void *pMutex) {
@@ -129,7 +129,7 @@ Result stucJobStackPushJobs(
 	I32 jobsPushed = 0;
 	do {
 		I32 batchTop = jobAmount;
-		pthread_mutex_unlock(pState->pJobMutex);
+		pthread_mutex_lock(pState->pJobMutex);
 		I32 nextTop = pState->jobs.count + jobAmount - jobsPushed;
 		if (nextTop > JOB_STACK_SIZE) {
 			batchTop -= nextTop - JOB_STACK_SIZE;
@@ -200,7 +200,7 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 			pthread_join(pState->threads[i], NULL);
 		}
 	}
-	stucMutexDestroy(pState, &pState->pJobMutex);
+	stucMutexDestroy(pState, pState->pJobMutex);
 	pState->alloc.fpFree(pState);
 }
 
