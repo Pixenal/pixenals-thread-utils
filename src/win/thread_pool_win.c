@@ -9,16 +9,16 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdlib.h>
 
 #include <thread_pool.h>
-#include <context.h>
-#include <error.h>
+
+typedef int32_t I32;
 
 #define JOB_STACK_SIZE 128
 
 typedef struct StucJob {
-	StucResult (*pJob) (void *);
+	PixErr (*pJob) (void *);
 	void *pArgs;
 	HANDLE pMutex;
-	StucResult err;
+	PixErr err;
 } StucJob;
 
 typedef struct StucJobStack {
@@ -27,30 +27,30 @@ typedef struct StucJobStack {
 } StucJobStack;
 
 typedef struct ThreadPool {
-	HANDLE threads[MAX_THREADS];
-	DWORD threadIds[MAX_THREADS];
+	HANDLE threads[PIX_THREAD_MAX_THREADS];
+	DWORD threadIds[PIX_THREAD_MAX_THREADS];
 	StucJobStack jobs;
-	StucAlloc alloc;
+	PixalcFPtrs alloc;
 	HANDLE jobMutex;
 	I32 threadAmount;
 	I32 run;
 } ThreadPool;
 
-void stucMutexGet(void *pThreadPool, void **pMutex) {
+void pixthMutexGet(void *pThreadPool, void **pMutex) {
 	*pMutex = CreateMutex(NULL, 0, NULL);
 }
 
-void stucMutexLock(void *pThreadPool, void *pMutex) {
+void pixthMutexLock(void *pThreadPool, void *pMutex) {
 	HANDLE mutex = (HANDLE)pMutex;
 	WaitForSingleObject(mutex, INFINITE);
 }
 
-void stucMutexUnlock(void *pThreadPool, void *pMutex) {
+void pixthMutexUnlock(void *pThreadPool, void *pMutex) {
 	HANDLE mutex = (HANDLE)pMutex;
 	ReleaseMutex(mutex);
 }
 
-void stucMutexDestroy(void *pThreadPool, void *pMutex) {
+void pixthMutexDestroy(void *pThreadPool, void *pMutex) {
 	HANDLE mutex = (HANDLE)pMutex;
 	CloseHandle(mutex);
 }
@@ -74,7 +74,7 @@ void stucBarrierDestroy(void *pThreadPool, void *pBarrier) {
 }
 */
 
-void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
+void pixthJobStackGetJob(void *pThreadPool, void **ppJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
 	if (pState->jobs.count > 0) {
@@ -97,14 +97,14 @@ bool checkRunFlag(const ThreadPool *pState) {
 	return run;
 }
 
-bool stucGetAndDoJob(void *pThreadPool) {
+bool pixthGetAndDoJob(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob *pJob = NULL;
-	stucJobStackGetJob(pState, &pJob);
+	pixthJobStackGetJob(pState, &pJob);
 	if (!pJob) {
 		return false;
 	}
-	StucResult err = pJob->pJob(pJob->pArgs);
+	PixErr err = pJob->pJob(pJob->pArgs);
 	WaitForSingleObject(pJob->pMutex, INFINITE);
 	pJob->err = err;
 	ReleaseMutex(pJob->pMutex);
@@ -118,7 +118,7 @@ unsigned long threadLoop(void *pArgs) {
 		if (!checkRunFlag(pState)) {
 			break;
 		}
-		bool gotJob = stucGetAndDoJob(pArgs);
+		bool gotJob = pixthGetAndDoJob(pArgs);
 		if (!gotJob) {
 			Sleep(25);
 		}
@@ -126,14 +126,14 @@ unsigned long threadLoop(void *pArgs) {
 	return 0;
 }
 
-Result stucJobStackPushJobs(
+PixErr pixthJobStackPushJobs(
 	void *pThreadPool,
 	I32 jobAmount,
 	void **ppJobHandles,
-	StucResult(*pJob)(void *),
+	PixErr(*pJob)(void *),
 	void **pJobArgs
 ) {
-	Result err = STUC_SUCCESS;
+	PixErr err = PIX_ERR_SUCCESS;
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	I32 jobsPushed = 0;
 	do {
@@ -147,14 +147,14 @@ Result stucJobStackPushJobs(
 			StucJob *pJobEntry = pState->alloc.fpCalloc(1, sizeof(StucJob));
 			pJobEntry->pJob = pJob;
 			pJobEntry->pArgs = pJobArgs[i];
-			stucMutexGet(pThreadPool, &pJobEntry->pMutex);
+			pixthMutexGet(pThreadPool, &pJobEntry->pMutex);
 			pState->jobs.stack[pState->jobs.count] = pJobEntry;
 			pState->jobs.count++;
 			ppJobHandles[i] = pJobEntry;
 			jobsPushed++;
 		}
 		ReleaseMutex(pState->jobMutex);
-		STUC_ASSERT("", jobsPushed >= 0 && jobsPushed <= jobAmount);
+		PIX_ERR_ASSERT("", jobsPushed >= 0 && jobsPushed <= jobAmount);
 		if (jobsPushed == jobAmount) {
 			break;
 		}
@@ -162,14 +162,14 @@ Result stucJobStackPushJobs(
 			Sleep(25);
 		}
 	} while(true);
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
-void stucThreadPoolInit(
+void pixthThreadPoolInit(
 	void **pThreadPool,
 	I32 *pThreadCount,
-	const StucAlloc *pAlloc
+	const PixalcFPtrs *pAlloc
 ) {
 	ThreadPool *pState = pAlloc->fpCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
@@ -179,8 +179,8 @@ void stucThreadPoolInit(
 	SYSTEM_INFO systemInfo;
 	GetSystemInfo(&systemInfo);
 	pState->threadAmount = systemInfo.dwNumberOfProcessors;
-	if (pState->threadAmount > MAX_THREADS) {
-		pState->threadAmount = MAX_THREADS;
+	if (pState->threadAmount > PIX_THREAD_MAX_THREADS) {
+		pState->threadAmount = PIX_THREAD_MAX_THREADS;
 	}
 	*pThreadCount = pState->threadAmount;
 	if (pState->threadAmount <= 1) {
@@ -192,7 +192,7 @@ void stucThreadPoolInit(
 	}
 }
 
-void stucThreadPoolDestroy(void *pThreadPool) {
+void pixthThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	if (pState->threadAmount > 1) {
 		WaitForSingleObject(pState->jobMutex, INFINITE);
@@ -204,31 +204,16 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 	pState->alloc.fpFree(pState);
 }
 
-StucResult stucThreadPoolSetCustom(
-	StucContext pCtx,
-	const StucThreadPool *pThreadPool
-) {
-	if (!pThreadPool->fpInit || !pThreadPool->fpDestroy || !pThreadPool->fpMutexGet ||
-	    !pThreadPool->fpMutexLock || !pThreadPool->fpMutexUnlock || !pThreadPool->fpMutexDestroy ||
-	    !pThreadPool->fpJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
-		printf("Failed to set custom thread pool. One or more functions were NULL");
-		return STUC_ERROR;
-	}
-	pCtx->threadPool.fpDestroy(pCtx);
-	pCtx->threadPool = *pThreadPool;
-	return STUC_SUCCESS;
-}
-
-StucResult stucWaitForJobsIntern(
+PixErr pixthWaitForJobsIntern(
 	void *pThreadPool,
 	I32 jobCount,
 	void **ppJobsVoid,
 	bool wait,
 	bool *pDone
 ) {
-	StucResult err = STUC_SUCCESS;
-	STUC_ASSERT("", jobCount > 0);
-	STUC_ASSERT("if wait is false, pDone must not be null", pDone || wait);
+	PixErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", jobCount > 0);
+	PIX_ERR_ASSERT("if wait is false, pDone must not be null", pDone || wait);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob **ppJobs = (StucJob **)ppJobsVoid;
 	I32 finished = 0;
@@ -239,20 +224,20 @@ StucResult stucWaitForJobsIntern(
 	do {
 		bool gotJob = false;
 		if (wait) {
-			gotJob = stucGetAndDoJob(pThreadPool);
+			gotJob = pixthGetAndDoJob(pThreadPool);
 		}
 		for (I32 i = 0; i < jobCount; ++i) {
 			if (pChecked[i]) {
 				continue;
 			}
 			WaitForSingleObject(ppJobs[i]->pMutex, INFINITE);
-			if (ppJobs[i]->err != STUC_NOT_SET) {
+			if (ppJobs[i]->err != PIX_ERR_NOT_SET) {
 				pChecked[i] = true;
 				finished++;
 			}
 			ReleaseMutex(ppJobs[i]->pMutex);
 		}
-		STUC_ASSERT("", finished <= jobCount && finished >= 0);
+		PIX_ERR_ASSERT("", finished <= jobCount && finished >= 0);
 		if (finished == jobCount) {
 			if (!wait) {
 				*pDone = true;
@@ -263,51 +248,31 @@ StucResult stucWaitForJobsIntern(
 			Sleep(25);
 		}
 	} while(wait);
-	STUC_CATCH(1, err, ;);
+	PIX_ERR_CATCH(1, err, ;);
 	pState->alloc.fpFree(pChecked);
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
-StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr) {
-	StucResult err = STUC_SUCCESS;
-	STUC_ASSERT("", pThreadPool && pJobHandle && pJobErr);
+PixErr pixthGetJobErr(void *pThreadPool, void *pJobHandle, PixErr *pJobErr) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", pThreadPool && pJobHandle && pJobErr);
 	StucJob *pJob = pJobHandle;
 	*pJobErr = pJob->err;
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
-StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
-	StucResult err = STUC_SUCCESS;
-	STUC_ASSERT("", pThreadPool && ppJobHandle);
+PixErr pixthJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", pThreadPool && ppJobHandle);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	StucJob *pJob = *ppJobHandle;
 	if (*ppJobHandle) {
-		stucMutexDestroy(pThreadPool, pJob->pMutex);
+		pixthMutexDestroy(pThreadPool, pJob->pMutex);
 		pState->alloc.fpFree(pJob);
 		*ppJobHandle = NULL;
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
-}
-
-void stucThreadPoolSetDefault(StucContext pCtx) {
-	pCtx->threadPool.fpInit = stucThreadPoolInit;
-	pCtx->threadPool.fpWaitForJobs = stucWaitForJobsIntern;
-	pCtx->threadPool.fpGetJobErr = stucGetJobErr;
-	pCtx->threadPool.fpJobHandleDestroy = stucJobHandleDestroy;
-	pCtx->threadPool.fpDestroy = stucThreadPoolDestroy;
-	pCtx->threadPool.fpMutexGet = stucMutexGet;
-	pCtx->threadPool.fpMutexLock = stucMutexLock;
-	pCtx->threadPool.fpMutexUnlock = stucMutexUnlock;
-	pCtx->threadPool.fpMutexDestroy = stucMutexDestroy;
-	/*
-	pCtx->threadPool.fpBarrierGet = stucBarrierGet;
-	pCtx->threadPool.fpBarrierWait = stucBarrierWait;
-	pCtx->threadPool.fpBarrierDestroy = stucBarrierDestroy;
-	*/
-	pCtx->threadPool.fpJobStackGetJob = stucJobStackGetJob;
-	pCtx->threadPool.pJobStackPushJobs = stucJobStackPushJobs;
-	pCtx->threadPool.fpGetAndDoJob = stucGetAndDoJob;
 }

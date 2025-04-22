@@ -4,46 +4,42 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 #pragma once
-#include <stdint.h>
+#include "alloc.h"
 
-#include <uv_stucco.h>
-#include <types.h>
+#define PIX_THREAD_MAX_THREADS 32
+#define PIX_THREAD_MAX_SUB_MAPPING_JOBS 8
+#define PIX_THREAD_MAX_MAPPING_JOBS 3
 
-#define MAX_THREADS 32
-#define MAX_SUB_MAPPING_JOBS 8
-#define MAX_MAPPING_JOBS 3
-
-void stucThreadPoolInit(
+void pixthThreadPoolInit(
 	void **pThreadPool,
-	I32 *ThreadCount,
-	const StucAlloc *pAlloc
+	int32_t *ThreadCount,
+	const PixalcFPtrs *pAlloc
 );
-StucResult stucJobStackPushJobs(
+void pixthJobStackGetJob(void *pThreadPool, void **ppJob);
+PixErr pixthJobStackPushJobs(
 	void *pThreadPool,
-	I32 jobAmount,
+	int32_t jobAmount,
 	void **ppJobHandles,
-	StucResult(*pJob)(void *),
+	PixErr(*pJob)(void *),
 	void **pJobArgs
 );
-bool stucGetAndDoJob(void *pThreadPool);
-void stucMutexGet(void *pThreadPool, void **pMutex);
-void stucMutexLock(void *pThreadPool, void *pMutex);
-void stucMutexUnlock(void *pThreadPool, void *pMutex);
-void stucMutexDestroy(void *pThreadPool, void *pMutex);
+bool pixthGetAndDoJob(void *pThreadPool);
+void pixthMutexGet(void *pThreadPool, void **pMutex);
+void pixthMutexLock(void *pThreadPool, void *pMutex);
+void pixthMutexUnlock(void *pThreadPool, void *pMutex);
+void pixthMutexDestroy(void *pThreadPool, void *pMutex);
 /*
-void stucBarrierGet(void *pThreadPool, void **ppBarrier, I32 jobCount);
+void stucBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount);
 bool stucBarrierWait(void *pThreadPool, void *pBarrier);
 void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
 */
-void stucThreadPoolDestroy(void *pThreadPool);
-StucResult stucWaitForJobsIntern(
+void pixthThreadPoolDestroy(void *pThreadPool);
+PixErr pixthWaitForJobsIntern(
 	void *pThreadPool,
-	I32 jobCount,
+	int32_t jobCount,
 	void **ppJobs,
 	bool wait,
 	bool *pDone
 );
-StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr);
-StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle);
-
-void stucThreadPoolSetDefault(StucContext context);
+PixErr pixthGetJobErr(void *pThreadPool, void *pJobHandle, PixErr *pJobErr);
+PixErr pixthJobHandleDestroy(void *pThreadPool, void **ppJobHandle);
