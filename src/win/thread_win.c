@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <thread_pool.h>
+#include <pixenals_thread_utils.h>
 
 typedef int32_t I32;
 

@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 #pragma once
-#include "alloc.h"
+#include "../../pixenals-alloc-utils/include/pixenals_alloc_utils.h"
 
 #define PIX_THREAD_MAX_THREADS 32
 #define PIX_THREAD_MAX_SUB_MAPPING_JOBS 8
