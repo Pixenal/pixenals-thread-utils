@@ -14,22 +14,22 @@ typedef int32_t I32;
 
 #define JOB_STACK_SIZE 128
 
-typedef struct StucJob {
+typedef struct PixJob {
 	PixErr (*pJob) (void *);
 	void *pArgs;
 	HANDLE pMutex;
 	PixErr err;
-} StucJob;
+} PixJob;
 
-typedef struct StucJobStack {
-	StucJob *stack[JOB_STACK_SIZE];
+typedef struct PixJobStack {
+	PixJob *stack[JOB_STACK_SIZE];
 	I32 count;
-} StucJobStack;
+} PixJobStack;
 
 typedef struct ThreadPool {
 	HANDLE threads[PIX_THREAD_MAX_THREADS];
 	DWORD threadIds[PIX_THREAD_MAX_THREADS];
-	StucJobStack jobs;
+	PixJobStack jobs;
 	PixalcFPtrs alloc;
 	HANDLE jobMutex;
 	I32 threadAmount;
@@ -99,7 +99,7 @@ bool checkRunFlag(const ThreadPool *pState) {
 
 bool pixthGetAndDoJob(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob *pJob = NULL;
+	PixJob *pJob = NULL;
 	pixthJobStackGetJob(pState, &pJob);
 	if (!pJob) {
 		return false;
@@ -144,7 +144,7 @@ PixErr pixthJobStackPushJobs(
 			batchTop -= nextTop - JOB_STACK_SIZE;
 		}
 		for (I32 i = jobsPushed; i < batchTop; ++i) {
-			StucJob *pJobEntry = pState->alloc.fpCalloc(1, sizeof(StucJob));
+			PixJob *pJobEntry = pState->alloc.fpCalloc(1, sizeof(PixJob));
 			pJobEntry->pJob = pJob;
 			pJobEntry->pArgs = pJobArgs[i];
 			pixthMutexGet(pThreadPool, &pJobEntry->pMutex);
@@ -215,7 +215,7 @@ PixErr pixthWaitForJobsIntern(
 	PIX_ERR_ASSERT("", jobCount > 0);
 	PIX_ERR_ASSERT("if wait is false, pDone must not be null", pDone || wait);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob **ppJobs = (StucJob **)ppJobsVoid;
+	PixJob **ppJobs = (PixJob **)ppJobsVoid;
 	I32 finished = 0;
 	bool *pChecked = pState->alloc.fpCalloc(jobCount, sizeof(bool));
 	if (!wait) {
@@ -257,7 +257,7 @@ PixErr pixthWaitForJobsIntern(
 PixErr pixthGetJobErr(void *pThreadPool, void *pJobHandle, PixErr *pJobErr) {
 	PixErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_ASSERT("", pThreadPool && pJobHandle && pJobErr);
-	StucJob *pJob = pJobHandle;
+	PixJob *pJob = pJobHandle;
 	*pJobErr = pJob->err;
 	PIX_ERR_CATCH(0, err, ;);
 	return err;
@@ -267,7 +267,7 @@ PixErr pixthJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
 	PixErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_ASSERT("", pThreadPool && ppJobHandle);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob *pJob = *ppJobHandle;
+	PixJob *pJob = *ppJobHandle;
 	if (*ppJobHandle) {
 		pixthMutexDestroy(pThreadPool, pJob->pMutex);
 		pState->alloc.fpFree(pJob);
