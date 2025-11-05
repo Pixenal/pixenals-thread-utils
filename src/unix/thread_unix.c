@@ -14,54 +14,54 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <thread_pool.h>
-#include <context.h>
-#include <error.h>
+#include <pixenals_thread_utils.h>
+
+typedef int32_t I32;
 
 #define JOB_STACK_SIZE 128
 
-typedef struct {
-	StucResult (*pJob) (void *);
+typedef struct PixJob {
+	PixErr (*pJob) (void *);
 	void *pArgs;
 	pthread_mutex_t *pMutex;
-	StucResult err;
-} StucJob;
+	PixErr err;
+} PixJob;
 
-typedef struct {
-	StucJob *stack[JOB_STACK_SIZE];
+typedef struct PixJobStack{
+	PixJob *stack[JOB_STACK_SIZE];
 	I32 count;
-} StucJobStack;
+} PixJobStack;
 
-typedef struct {
-	pthread_t threads[MAX_THREADS];
-	StucJobStack jobs;
-	StucAlloc alloc;
+typedef struct ThreadPool{
+	pthread_t threads[PIX_THREAD_MAX_THREADS];
+	PixJobStack jobs;
+	PixalcFPtrs alloc;
 	pthread_mutex_t *pJobMutex;
 	I32 threadAmount;
 	I32 run;
 } ThreadPool;
 
-void stucMutexGet(void *pThreadPool, void **ppMutex) {
+void pixthMutexGet(void *pThreadPool, void **ppMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	*ppMutex = pState->alloc.fpMalloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(*ppMutex, NULL);
 }
 
-void stucMutexLock(void *pThreadPool, void *pMutex) {
+void pixthMutexLock(void *pThreadPool, void *pMutex) {
 	pthread_mutex_lock(pMutex);
 }
 
-void stucMutexUnlock(void *pThreadPool, void *pMutex) {
+void pixthMutexUnlock(void *pThreadPool, void *pMutex) {
 	pthread_mutex_unlock(pMutex);
 }
 
-void stucMutexDestroy(void *pThreadPool, void *pMutex) {
+void pixthMutexDestroy(void *pThreadPool, void *pMutex) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	pthread_mutex_destroy(pMutex);
 	pState->alloc.fpFree(pMutex);
 }
 
-void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
+void pixthJobStackGetJob(void *pThreadPool, void **ppJob) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	pthread_mutex_lock(pState->pJobMutex);
 	if (pState->jobs.count > 0) {
@@ -77,21 +77,21 @@ void stucJobStackGetJob(void *pThreadPool, void **ppJob) {
 }
 
 static
-bool checkRunFlag(ThreadPool *pState) {
+bool checkRunFlag(const ThreadPool *pState) {
 	pthread_mutex_lock(pState->pJobMutex);
 	bool run = pState->run;
 	pthread_mutex_unlock(pState->pJobMutex);
 	return run;
 }
 
-bool stucGetAndDoJob(void *pThreadPool) {
+bool pixthGetAndDoJob(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob *pJob = NULL;
-	stucJobStackGetJob(pState, (void **)&pJob);
+	PixJob *pJob = NULL;
+	pixthJobStackGetJob(pState, (void **)&pJob);
 	if (!pJob) {
 		return false;
 	}
-	StucResult err = pJob->pJob(pJob->pArgs);
+	PixErr err = pJob->pJob(pJob->pArgs);
 	pthread_mutex_lock(pJob->pMutex);
 	pJob->err = err;
 	pthread_mutex_unlock(pJob->pMutex);
@@ -107,7 +107,7 @@ void *threadLoop(void *pArgs) {
 		if (!checkRunFlag(pState)) {
 			break;
 		}
-		bool gotJob = stucGetAndDoJob(pArgs);
+		bool gotJob = pixthGetAndDoJob(pArgs);
 		if (!gotJob) {
 			nanosleep(&request, &remaining);
 		}
@@ -115,14 +115,14 @@ void *threadLoop(void *pArgs) {
 	return NULL;
 }
 
-Result stucJobStackPushJobs(
+PixErr pixthJobStackPushJobs(
 	void *pThreadPool,
 	I32 jobAmount,
 	void **ppJobHandles,
-	StucResult(*pJob)(void *),
+	PixErr(*pJob)(void *),
 	void **pJobArgs
 ) {
-	Result err = STUC_SUCCESS;
+	PixErr err = PIX_ERR_SUCCESS;
 	struct timespec remaining = {0};
 	struct timespec request = {0, 25};
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
@@ -135,17 +135,17 @@ Result stucJobStackPushJobs(
 			batchTop -= nextTop - JOB_STACK_SIZE;
 		}
 		for (I32 i = jobsPushed; i < batchTop; ++i) {
-			StucJob *pJobEntry = pState->alloc.fpCalloc(1, sizeof(StucJob));
+			PixJob *pJobEntry = pState->alloc.fpCalloc(1, sizeof(PixJob));
 			pJobEntry->pJob = pJob;
 			pJobEntry->pArgs = pJobArgs[i];
-			stucMutexGet(pThreadPool, (void **)&pJobEntry->pMutex);
+			pixthMutexGet(pThreadPool, (void **)&pJobEntry->pMutex);
 			pState->jobs.stack[pState->jobs.count] = pJobEntry;
 			pState->jobs.count++;
 			ppJobHandles[i] = pJobEntry;
 			jobsPushed++;
 		}
 		pthread_mutex_unlock(pState->pJobMutex);
-		STUC_ASSERT("", jobsPushed >= 0 && jobsPushed <= jobAmount);
+		PIX_ERR_ASSERT("", jobsPushed >= 0 && jobsPushed <= jobAmount);
 		if (jobsPushed == jobAmount) {
 			break;
 		}
@@ -153,33 +153,33 @@ Result stucJobStackPushJobs(
 			nanosleep(&request, &remaining);
 		}
 	} while(true);
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
-void stucThreadPoolInit(
+void pixthThreadPoolInit(
 		void **pThreadPool,
 		I32 *pThreadCount,
-        const StucAlloc *pAlloc
+        const PixalcFPtrs *pAlloc
 ) {
 	ThreadPool *pState = pAlloc->fpCalloc(1, sizeof(ThreadPool));
 	*pThreadPool = pState;
 	pState->alloc = *pAlloc;
-	stucMutexGet(pState, (void **)&pState->pJobMutex);
+	pixthMutexGet(pState, (void **)&pState->pJobMutex);
 	pState->run = 1;
 #ifdef __APPLE_CC__
 	uint64_t count = 0;
 	size_t size = sizeof(uint64_t);
-	I32 result = sysctlbyname("hw.physicalcpu", &count, &size, NULL, 0);
-	if (result < 0) {
-		STUC_ASSERT("Unable to get core count\n", 0);
+	I32 err = sysctlbyname("hw.physicalcpu", &count, &size, NULL, 0);
+	if (err < 0) {
+		PIX_ERR_ASSERT("Unable to get core count\n", 0);
 	}
 	pState->threadAmount = count;
 #else
 	pState->threadAmount = get_nprocs();
 #endif
-	if (pState->threadAmount > MAX_THREADS) {
-		pState->threadAmount = MAX_THREADS;
+	if (pState->threadAmount > PIX_THREAD_MAX_THREADS) {
+		pState->threadAmount = PIX_THREAD_MAX_THREADS;
 	}
 	*pThreadCount = pState->threadAmount;
 	if (pState->threadAmount <= 1) {
@@ -190,7 +190,7 @@ void stucThreadPoolInit(
 	}
 }
 
-void stucThreadPoolDestroy(void *pThreadPool) {
+void pixthThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	if (pState->threadAmount > 1) {
 		pthread_mutex_lock(pState->pJobMutex);
@@ -200,37 +200,26 @@ void stucThreadPoolDestroy(void *pThreadPool) {
 			pthread_join(pState->threads[i], NULL);
 		}
 	}
-	stucMutexDestroy(pState, pState->pJobMutex);
+	pixthMutexDestroy(pState, pState->pJobMutex);
 	pState->alloc.fpFree(pState);
 }
 
-//TODO update to check for new functions
-Result stucThreadPoolSetCustom(StucContext pCtx, const StucThreadPool *pThreadPool) {
-	if (!pThreadPool->fpInit || !pThreadPool->fpDestroy || !pThreadPool->fpMutexGet ||
-	    !pThreadPool->fpMutexLock || !pThreadPool->fpMutexUnlock || !pThreadPool->fpMutexDestroy ||
-		!pThreadPool->fpJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
-		printf("Failed to set custom thread pool. One or more functions were NULL");
-		return STUC_ERROR;
-	}
-	pCtx->threadPool.fpDestroy(pCtx);
-	pCtx->threadPool = *pThreadPool;
-	return STUC_SUCCESS;
-}
-
-StucResult stucWaitForJobsIntern(
+//TODO there's enough duplicate logic in this and the win file to warrent abstracting funcs
+//like below into an agnostic source file
+PixErr pixthWaitForJobsIntern(
 	void *pThreadPool,
 	I32 jobCount,
 	void **ppJobsVoid,
 	bool wait,
 	bool *pDone
 ) {
-	StucResult err = STUC_SUCCESS;
-	STUC_ASSERT("", jobCount > 0);
-	STUC_ASSERT("if wait is false, pDone must not be null", pDone || wait);
+	PixErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", jobCount > 0);
+	PIX_ERR_ASSERT("if wait is false, pDone must not be null", pDone || wait);
 	struct timespec remaining = {0};
 	struct timespec request = {0, 25};
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob **ppJobs = (StucJob **)ppJobsVoid;
+	PixJob **ppJobs = (PixJob **)ppJobsVoid;
 	I32 finished = 0;
 	bool *pChecked = pState->alloc.fpCalloc(jobCount, sizeof(bool));
 	if (!wait) {
@@ -239,20 +228,20 @@ StucResult stucWaitForJobsIntern(
 	do {
 		bool gotJob = false;
 		if (wait) {
-			gotJob = stucGetAndDoJob(pThreadPool);
+			gotJob = pixthGetAndDoJob(pThreadPool);
 		}
 		for (I32 i = 0; i < jobCount; ++i) {
 			if (pChecked[i]) {
 				continue;
 			}
 			pthread_mutex_lock(ppJobs[i]->pMutex);
-			if (ppJobs[i]->err != STUC_NOT_SET) {
+			if (ppJobs[i]->err != PIX_ERR_NOT_SET) {
 				pChecked[i] = true;
 				finished++;
 			}
 			pthread_mutex_unlock(ppJobs[i]->pMutex);
 		}
-		STUC_ASSERT("", finished <= jobCount && finished >= 0);
+		PIX_ERR_ASSERT("", finished <= jobCount && finished >= 0);
 		if (finished == jobCount) {
 			if (!wait) {
 				*pDone = true;
@@ -263,51 +252,31 @@ StucResult stucWaitForJobsIntern(
 			nanosleep(&request, &remaining);
 		}
 	} while(wait);
-	STUC_CATCH(1, err, ;);
+	PIX_ERR_CATCH(1, err, ;);
 	pState->alloc.fpFree(pChecked);
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
-StucResult stucGetJobErr(void *pThreadPool, void *pJobHandle, StucResult *pJobErr) {
-	StucResult err = STUC_SUCCESS;
-	STUC_ASSERT("", pThreadPool && pJobHandle && pJobErr);
-	StucJob *pJob = pJobHandle;
+PixErr pixthGetJobErr(void *pThreadPool, void *pJobHandle, PixErr *pJobErr) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", pThreadPool && pJobHandle && pJobErr);
+	PixJob *pJob = pJobHandle;
 	*pJobErr = pJob->err;
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
-StucResult stucJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
-	StucResult err = STUC_SUCCESS;
-	STUC_ASSERT("", pThreadPool && ppJobHandle);
+PixErr pixthJobHandleDestroy(void *pThreadPool, void **ppJobHandle) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", pThreadPool && ppJobHandle);
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
-	StucJob *pJob = *ppJobHandle;
+	PixJob *pJob = *ppJobHandle;
 	if (*ppJobHandle) {
-		stucMutexDestroy(pThreadPool, pJob->pMutex);
+		pixthMutexDestroy(pThreadPool, pJob->pMutex);
 		pState->alloc.fpFree(pJob);
 		*ppJobHandle = NULL;
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
-}
-
-void stucThreadPoolSetDefault(StucContext pCtx) {
-	pCtx->threadPool.fpInit = stucThreadPoolInit;
-	pCtx->threadPool.fpWaitForJobs = stucWaitForJobsIntern;
-	pCtx->threadPool.fpGetJobErr = stucGetJobErr;
-	pCtx->threadPool.fpJobHandleDestroy = stucJobHandleDestroy;
-	pCtx->threadPool.fpDestroy = stucThreadPoolDestroy;
-	pCtx->threadPool.fpMutexGet = stucMutexGet;
-	pCtx->threadPool.fpMutexLock = stucMutexLock;
-	pCtx->threadPool.fpMutexUnlock = stucMutexUnlock;
-	pCtx->threadPool.fpMutexDestroy = stucMutexDestroy;
-	/*
-	pCtx->threadPool.fpBarrierGet = stucBarrierGet;
-	pCtx->threadPool.fpBarrierWait = stucBarrierWait;
-	pCtx->threadPool.fpBarrierDestroy = stucBarrierDestroy;
-	*/
-	pCtx->threadPool.fpJobStackGetJob = stucJobStackGetJob;
-	pCtx->threadPool.pJobStackPushJobs = stucJobStackPushJobs;
-	pCtx->threadPool.fpGetAndDoJob = stucGetAndDoJob;
 }
