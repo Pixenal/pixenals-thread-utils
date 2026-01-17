@@ -26,14 +26,29 @@ typedef struct PixJobStack {
 	I32 count;
 } PixJobStack;
 
+struct ThreadPool;
+
+typedef struct ThreadArgs {
+	struct ThreadPool *pState;
+	int32_t id;
+} ThreadArgs;
+
+typedef enum Directive {
+	THREAD_NONE,
+	THREAD_SLEEP,
+	THREAD_WAKE,
+	THREAD_STOP
+} Directive;
+
 typedef struct ThreadPool {
 	HANDLE threads[PIX_THREAD_MAX_THREADS];
 	DWORD threadIds[PIX_THREAD_MAX_THREADS];
+	ThreadArgs threadArgs[PIX_THREAD_MAX_THREADS];
 	PixJobStack jobs;
 	PixalcFPtrs alloc;
 	HANDLE jobMutex;
 	I32 threadAmount;
-	I32 run;
+	Directive directive;
 } ThreadPool;
 
 void pixthMutexGet(void *pThreadPool, void **pMutex) {
@@ -74,56 +89,72 @@ void stucBarrierDestroy(void *pThreadPool, void *pBarrier) {
 }
 */
 
-void pixthJobStackGetJob(void *pThreadPool, void **ppJob) {
+void pixthJobStackGetJob(void *pThreadPool, void **ppJob, int32_t threadId) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	WaitForSingleObject(pState->jobMutex, INFINITE);
 	if (pState->jobs.count > 0) {
+		//printf("found job on thread %d\n", threadId);
 		pState->jobs.count--;
 		*ppJob = pState->jobs.stack[pState->jobs.count];
 		pState->jobs.stack[pState->jobs.count] = NULL;
 	}
 	else {
+		//printf("no job found on thread %d\n", threadId);
 		*ppJob = NULL;
+		pState->directive = THREAD_SLEEP;
 	}
 	ReleaseMutex(pState->jobMutex);
 	return;
 }
 
 static
-bool checkRunFlag(const ThreadPool *pState) {
+Directive checkRunDirective(const ThreadPool *pState) {
 	WaitForSingleObject(pState->jobMutex, INFINITE);
-	bool run = pState->run;
+	Directive directive = pState->directive;
 	ReleaseMutex(pState->jobMutex);
-	return run;
+	return directive;
 }
 
-bool pixthGetAndDoJob(void *pThreadPool) {
+bool pixthGetAndDoJob(void *pThreadPool, I32 threadId) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	PixJob *pJob = NULL;
-	pixthJobStackGetJob(pState, &pJob);
+	pixthJobStackGetJob(pState, &pJob, threadId);
 	if (!pJob) {
 		return false;
 	}
 	PixErr err = pJob->pJob(pJob->pArgs);
 	WaitForSingleObject(pJob->pMutex, INFINITE);
 	pJob->err = err;
+	//printf("did job on thread %d\n", threadId);
 	ReleaseMutex(pJob->pMutex);
 	return true;
 }
 
 static
-unsigned long threadLoop(void *pArgs) {
-	ThreadPool *pState = (ThreadPool *)pArgs;
-	while(1) {
-		if (!checkRunFlag(pState)) {
-			break;
-		}
-		bool gotJob = pixthGetAndDoJob(pArgs);
-		if (!gotJob) {
-			Sleep(25);
+unsigned long threadLoop(void *pArgsVoid) {
+	ThreadArgs *pArgs = pArgsVoid;
+	Directive directive = THREAD_SLEEP;
+	while(true) {
+		switch (directive) {
+			case THREAD_SLEEP:
+				directive = checkRunDirective(pArgs->pState);
+				if (directive != THREAD_WAKE) {
+					if (directive == THREAD_SLEEP) {
+						Sleep(25);
+					}
+					break;
+				}
+				//if THREAD_WAKE then fall through to next case
+			case THREAD_WAKE:
+				if (!pixthGetAndDoJob(pArgs->pState, pArgs->id)) {
+					directive = THREAD_SLEEP;//no jobs left in stack
+				}
+				break;
+			case THREAD_STOP:
+			default:
+				return 0; //TODO should default return 1?
 		}
 	}
-	return 0;
 }
 
 PixErr pixthJobStackPushJobs(
@@ -153,6 +184,7 @@ PixErr pixthJobStackPushJobs(
 			ppJobHandles[i] = pJobEntry;
 			jobsPushed++;
 		}
+		pState->directive = THREAD_WAKE;
 		ReleaseMutex(pState->jobMutex);
 		PIX_ERR_ASSERT("", jobsPushed >= 0 && jobsPushed <= jobAmount);
 		if (jobsPushed == jobAmount) {
@@ -175,7 +207,7 @@ void pixthThreadPoolInit(
 	*pThreadPool = pState;
 	pState->alloc = *pAlloc;
 	pState->jobMutex = CreateMutex(NULL, 0, NULL);
-	pState->run = 1;
+	pState->directive = THREAD_SLEEP;
 	SYSTEM_INFO systemInfo;
 	GetSystemInfo(&systemInfo);
 	pState->threadAmount = systemInfo.dwNumberOfProcessors;
@@ -187,8 +219,15 @@ void pixthThreadPoolInit(
 		return;
 	}
 	for (I32 i = 0; i < pState->threadAmount; ++i) {
-		pState->threads[i] =
-			CreateThread(NULL, 0, &threadLoop, pState, 0, pState->threadIds + i);
+		pState->threadArgs[i] = (ThreadArgs){.pState = pState, .id = i};
+		pState->threads[i] = CreateThread(
+			NULL,
+			0,
+			&threadLoop,
+			pState->threadArgs + i,
+			0,
+			pState->threadIds + i
+		);
 	}
 }
 
@@ -196,7 +235,7 @@ void pixthThreadPoolDestroy(void *pThreadPool) {
 	ThreadPool *pState = (ThreadPool *)pThreadPool;
 	if (pState->threadAmount > 1) {
 		WaitForSingleObject(pState->jobMutex, INFINITE);
-		pState->run = 0;
+		pState->directive = THREAD_STOP;
 		ReleaseMutex(pState->jobMutex);
 		WaitForMultipleObjects(pState->threadAmount, pState->threads, 1, INFINITE);
 	}
@@ -214,7 +253,7 @@ PixErr pixthWaitForJobsIntern(
 	PixErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_ASSERT("", jobCount > 0);
 	PIX_ERR_ASSERT("if wait is false, pDone must not be null", pDone || wait);
-	ThreadPool *pState = (ThreadPool *)pThreadPool;
+	ThreadPool *pState = pThreadPool;
 	PixJob **ppJobs = (PixJob **)ppJobsVoid;
 	I32 finished = 0;
 	bool *pChecked = pState->alloc.fpCalloc(jobCount, sizeof(bool));
@@ -224,7 +263,7 @@ PixErr pixthWaitForJobsIntern(
 	do {
 		bool gotJob = false;
 		if (wait) {
-			gotJob = pixthGetAndDoJob(pThreadPool);
+			gotJob = pixthGetAndDoJob(pThreadPool, -1);
 		}
 		for (I32 i = 0; i < jobCount; ++i) {
 			if (pChecked[i]) {
@@ -248,6 +287,7 @@ PixErr pixthWaitForJobsIntern(
 			Sleep(25);
 		}
 	} while(wait);
+	//printf("finished waiting for jobs\n");
 	PIX_ERR_CATCH(1, err, ;);
 	pState->alloc.fpFree(pChecked);
 	PIX_ERR_CATCH(0, err, ;);

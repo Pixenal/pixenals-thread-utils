@@ -15,7 +15,7 @@ void pixthThreadPoolInit(
 	int32_t *ThreadCount,
 	const PixalcFPtrs *pAlloc
 );
-void pixthJobStackGetJob(void *pThreadPool, void **ppJob);
+void pixthJobStackGetJob(void *pThreadPool, void **ppJob, int32_t threadId);
 PixErr pixthJobStackPushJobs(
 	void *pThreadPool,
 	int32_t jobAmount,
@@ -23,7 +23,7 @@ PixErr pixthJobStackPushJobs(
 	PixErr(*pJob)(void *),
 	void **pJobArgs
 );
-bool pixthGetAndDoJob(void *pThreadPool);
+bool pixthGetAndDoJob(void *pThreadPool, int32_t id);
 void pixthMutexGet(void *pThreadPool, void **pMutex);
 void pixthMutexLock(void *pThreadPool, void *pMutex);
 void pixthMutexUnlock(void *pThreadPool, void *pMutex);
