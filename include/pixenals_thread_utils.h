@@ -10,10 +10,19 @@ SPDX-License-Identifier: Apache-2.0
 #define PIX_THREAD_MAX_SUB_MAPPING_JOBS 8
 #define PIX_THREAD_MAX_MAPPING_JOBS 3
 
-void pixthThreadPoolInit(
+typedef struct PixthPlatform *PixthPlatform;
+
+PixErr pixthThreadPoolInit(
 	void **pThreadPool,
 	int32_t *ThreadCount,
 	const PixalcFPtrs *pAlloc
+);
+void *pixthArgGet(void *pThreadPool, I32 idx);
+PixErr pixthThreadPoolInitPlatform(
+	const PixalcFPtrs *pAlloc,
+	PixthPlatform *ppPlatform,
+	int32_t *pThreadCount,
+	int32_t (*fpLoop)(void *)
 );
 void pixthJobStackGetJob(void *pThreadPool, void **ppJob, int32_t threadId);
 PixErr pixthJobStackPushJobs(
@@ -34,6 +43,10 @@ bool stucBarrierWait(void *pThreadPool, void *pBarrier);
 void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
 */
 void pixthThreadPoolDestroy(void *pThreadPool);
+void pixthPlatformDestroy(
+	PixthPlatform pPlatform,
+	I32 threadCount
+);
 PixErr pixthWaitForJobsIntern(
 	void *pThreadPool,
 	int32_t jobCount,
@@ -43,3 +56,4 @@ PixErr pixthWaitForJobsIntern(
 );
 PixErr pixthGetJobErr(void *pThreadPool, void *pJobHandle, PixErr *pJobErr);
 PixErr pixthJobHandleDestroy(void *pThreadPool, void **ppJobHandle);
+void pixthSleep(void *pThreadPool, int32_t nanosec);
