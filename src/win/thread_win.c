@@ -48,7 +48,7 @@ unsigned long threadLoop(void *pArgs) {
 	return (unsigned long)(*(*(PixthPlatform **)pArgs))->fpLoop(pArgs);
 }
 
-PixErr pixtTheadPoolInitPlatform(
+PixErr pixthThreadPoolInitPlatform(
 	const PixalcFPtrs *pAlloc,
 	PixthPlatform *ppPlatform,
 	I32 *pThreadCount,
@@ -64,13 +64,13 @@ PixErr pixtTheadPoolInitPlatform(
 	if (*pThreadCount > PIX_THREAD_MAX_THREADS) {
 		*pThreadCount = PIX_THREAD_MAX_THREADS;
 	}
-	PIX_ERR_RETURN_IFNOT_COND(err, *pThreadCount <= 1, "");
+	PIX_ERR_RETURN_IFNOT_COND(err, *pThreadCount > 1, "");
 	for (I32 i = 0; i < *pThreadCount; ++i) {
 		(*ppPlatform)->threads[i] = CreateThread(
 			NULL,
 			0,
-			&fpThreadLoop,
-			pixthArgsGet(ppPlatform, i),
+			&threadLoop,
+			pixthArgGet(ppPlatform, i),
 			0,
 			(*ppPlatform)->threadIds + i
 		);
