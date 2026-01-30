@@ -7,7 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 #include "../../pixenals-alloc-utils/include/pixenals_alloc_utils.h"
 
 #define PIX_THREAD_MAX_THREADS 32
-#define PIX_THREAD_MAX_SUB_MAPPING_JOBS 8
+//TODO these are stuc settings, move them to stuc
+//TODO also add an option to adjust thread count (within max) to stuc ui
+#define PIX_THREAD_MAX_SUB_MAPPING_JOBS 6
 #define PIX_THREAD_MAX_MAPPING_JOBS 3
 
 typedef struct PixthPlatform *PixthPlatform;
