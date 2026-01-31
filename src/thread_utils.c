@@ -47,7 +47,7 @@ union Core {
 typedef struct ThreadPool {
 	union Core core;
 	PixJobStack jobs;
-	//TODO mutex should be opaque ptr not void *
+	//TODO mutex should be opaque ptr not void *?
 	void *pJobMutex;
 	I32 threadAmount;
 	Directive directive;

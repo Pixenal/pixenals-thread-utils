@@ -39,11 +39,6 @@ void pixthMutexGet(void *pThreadPool, void **pMutex);
 void pixthMutexLock(void *pThreadPool, void *pMutex);
 void pixthMutexUnlock(void *pThreadPool, void *pMutex);
 void pixthMutexDestroy(void *pThreadPool, void *pMutex);
-/*
-void stucBarrierGet(void *pThreadPool, void **ppBarrier, int32_t jobCount);
-bool stucBarrierWait(void *pThreadPool, void *pBarrier);
-void stucBarrierDestroy(void *pThreadPool, void *pBarrier);
-*/
 void pixthThreadPoolDestroy(void *pThreadPool);
 void pixthPlatformDestroy(
 	PixthPlatform pPlatform,
