@@ -425,11 +425,9 @@ PixErr pixthWaitForJobs(
 	U32 tick = id;
 	do {
 		bool gotJob = false;
-		if (wait) {
-			err = pixthGetAndDoJob(pCtx, id, tick, &gotJob);
-			PIX_ERR_RETURN_IFNOT(err, "");
-			++tick;
-		}
+		err = pixthGetAndDoJob(pCtx, id, tick, &gotJob);
+		PIX_ERR_RETURN_IFNOT(err, "");
+		++tick;
 		for (I32 i = 0; i < jobCount; ++i) {
 			if (checked[i]) {
 				continue;
@@ -446,7 +444,7 @@ PixErr pixthWaitForJobs(
 			}
 			break;
 		}
-		else if (!gotJob) {
+		else if (!gotJob && wait) {
 			pixthSleep(pCtx, 25);
 		}
 	} while(wait);
