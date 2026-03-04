@@ -182,7 +182,9 @@ PixErr pixthGetAndDoJob(PixthPoolCtx *pCtx, I32 threadId, U32 tick, bool *pGotJo
 	err = pixthJobStackGetJob(pCtx, (void **)&pJob, threadId, tick);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	if (!pJob) {
-		*pGotJob = false;
+		if (pGotJob) {
+			*pGotJob = false;
+		}
 		return err;
 	}
 	PixErr jobErr = pJob->pJob(pJob->pArgs, threadId);
@@ -196,7 +198,9 @@ PixErr pixthGetAndDoJob(PixthPoolCtx *pCtx, I32 threadId, U32 tick, bool *pGotJo
 		jobErr
 	);
 	PIX_ERR_ASSERT("multiple threads executed the same job", jobErr == PIX_ERR_NOT_SET);
-	*pGotJob = true;
+	if (pGotJob) {
+		*pGotJob = true;
+	}
 	return err;
 }
 
@@ -243,23 +247,29 @@ void threadHandleAwake(PixthThreadArgs *pArgs, I32 *pNoJobs, I32 *pTick) {
 	bool gotJob = false;
 	PixErr err = pixthGetAndDoJob(pArgs->pCtx, pArgs->id, *pTick, &gotJob);
 	PIX_ERR_ASSERT("", err == PIX_ERR_SUCCESS);
-	if (!gotJob) {
-		++*pNoJobs;
-		if (*pNoJobs > PIXTH_NO_JOB_THRES) {
-			PixthPoolDirective cmp = pixthAtomicCmpAndSwapI32(
-				pArgs->pCtx,
-				(volatile I32 *)&pArgs->pCtx->directive,
-				THREAD_WAKE,
-				THREAD_SLEEP	
-			);
-			*pNoJobs = 0;
-			if (cmp == THREAD_WAKE) {
-				err = logAction(pArgs, NULL, PIX_THREAD_ACTION_SET_SLEEP, 0);
-				PIX_ERR_ASSERT("", err == PIX_ERR_SUCCESS);
-			}
-		}
-	}
 	++*pTick;
+	if (gotJob) {
+		return;
+	}
+	++*pNoJobs;
+	if (*pNoJobs <= PIXTH_NO_JOB_THRES) {
+		return;
+	}
+	*pNoJobs = 0;
+	PixthJobDeque *pMainJobs = &pArgs->pCtx->args[0].jobs;
+	if (pMainJobs->bottom - pMainJobs->top > 0) {
+		return;//main thread still has jobs, don't sleep
+	}
+	PixthPoolDirective cmp = pixthAtomicCmpAndSwapI32(
+		pArgs->pCtx,
+		(volatile I32 *)&pArgs->pCtx->directive,
+		THREAD_WAKE,
+		THREAD_SLEEP	
+	);
+	if (cmp == THREAD_WAKE) {
+		err = logAction(pArgs, NULL, PIX_THREAD_ACTION_SET_SLEEP, 0);
+		PIX_ERR_ASSERT("", err == PIX_ERR_SUCCESS);
+	}
 }
 
 //returns true if process should fallthrough to wake state
@@ -410,7 +420,7 @@ PixErr pixthWaitForJobs(
 	I32 jobCount,
 	PixthJob *pJobs,
 	I32 id,
-	bool wait,
+	const bool wait,
 	bool *pDone
 ) {
 	PixErr err = PIX_ERR_SUCCESS;
@@ -425,9 +435,11 @@ PixErr pixthWaitForJobs(
 	U32 tick = id;
 	do {
 		bool gotJob = false;
-		err = pixthGetAndDoJob(pCtx, id, tick, &gotJob);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		++tick;
+		if (wait) {
+			err = pixthGetAndDoJob(pCtx, id, tick, &gotJob);
+			PIX_ERR_RETURN_IFNOT(err, "");
+			++tick;
+		}
 		for (I32 i = 0; i < jobCount; ++i) {
 			if (checked[i]) {
 				continue;
@@ -448,7 +460,6 @@ PixErr pixthWaitForJobs(
 			pixthSleep(pCtx, 25);
 		}
 	} while(wait);
-	//printf("finished waiting for jobs\n");
 	return err;
 }
 
