@@ -390,7 +390,6 @@ PixErr pixthJobStackPushJobs(
 			break;
 		}
 		pixthSleep(pCtx, 25);
-		//printf(" <> waiting to push\n");
 	} while(true);
 	PIX_ERR_CATCH(0, err, ;);
 	return err;
@@ -457,7 +456,7 @@ PixErr pixthWaitForJobs(
 			break;
 		}
 		else if (!gotJob && wait) {
-			pixthSleep(pCtx, 25);
+			//pixthSleep(pCtx, 25);
 		}
 	} while(wait);
 	return err;
